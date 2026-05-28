@@ -1,0 +1,2548 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submarino Peral — Misión Activa</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=EB+Garamond:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --copper: #8B5E3C;
+            --copper-light: #b07d52;
+            --copper-dark: #5d3d25;
+            --amber: #d97706;
+            --green-glow: #22c55e;
+            --red-alarm: #ef4444;
+            --bg-dark: #0a0a0c;
+            --bg-panel: #1a1c1e;
+            --bg-inner: #0f1113;
+            --text-main: #d4c5a1;
+            --text-dim: #6b7280;
+        }
+
+        * { box-sizing: border-box; }
+        body { font-family: 'EB Garamond', serif; background-color: var(--bg-dark); color: var(--text-main); overflow: hidden; height: 100vh; margin: 0; }
+        .font-retro { font-family: 'Special Elite', monospace; }
+
+        /* CRT scanlines overlay */
+        .crt-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.08) 50%),
+                        linear-gradient(90deg, rgba(255,0,0,0.02), rgba(0,255,0,0.01), rgba(0,0,255,0.02));
+            background-size: 100% 3px, 3px 100%;
+            pointer-events: none; z-index: 9999;
+        }
+
+        /* Steampunk border */
+        .sp-border { border: 3px solid var(--copper); box-shadow: inset 0 0 20px rgba(0,0,0,0.6), 0 0 20px rgba(139,94,60,0.15); }
+        .sp-border-inner { border: 2px solid #333; box-shadow: inset 0 0 10px rgba(0,0,0,0.8); }
+
+        /* Gauge */
+        .gauge-box { position: relative; width: 120px; height: 60px; background: #0a0a0a; border-radius: 60px 60px 0 0; border: 2px solid #3a3a3a; overflow: hidden; }
+        .gauge-bg { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 110px; height: 55px; border-radius: 55px 55px 0 0; background: conic-gradient(from 180deg at 50% 100%, #1a3a1a 0deg, #2d5a1b 60deg, #d97706 100deg, #ef4444 140deg, #ef4444 180deg); }
+        .needle { position: absolute; bottom: 0; left: 50%; width: 2px; height: 48px; background: linear-gradient(to top, #ff4500, #ff6a00); transform-origin: bottom center; transition: transform 0.8s cubic-bezier(0.17, 0.88, 0.32, 1.28); z-index: 10; border-radius: 2px 2px 0 0; }
+        .needle::after { content: ''; position: absolute; bottom: -3px; left: -3px; width: 8px; height: 8px; background: #888; border-radius: 50%; }
+
+        /* Lives / fuses */
+        .life-fuse { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #333; transition: all 0.5s; }
+        .fuse-on { background: var(--green-glow); box-shadow: 0 0 12px var(--green-glow); }
+        .fuse-off { background: #2a0a0a; border-color: #111; }
+
+        /* Cell buttons */
+        .cell-btn {
+            width: 58px; height: 58px; border: 2px solid #3a3a3a; background: #111;
+            font-family: 'Special Elite', monospace; font-size: 11px; color: var(--text-main);
+            transition: all 0.2s; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .cell-btn:hover { border-color: #666; background: #1a1a1a; }
+        .cell-btn.selected { border-color: var(--amber); background: rgba(217,119,6,0.15); transform: scale(1.12); box-shadow: 0 0 12px rgba(217,119,6,0.4); }
+        .cell-btn.used { opacity: 0.2; pointer-events: none; }
+
+        /* Bank buttons */
+        .bank-btn { width: 100%; padding: 6px; background: #1a1a1a; border: 1px solid #444; font-family: 'Special Elite', monospace; font-size: 10px; color: #999; letter-spacing: 2px; transition: all 0.2s; cursor: pointer; }
+        .bank-btn:hover { background: #2a2a2a; border-color: var(--copper); color: var(--text-main); }
+
+        /* Console */
+        #console { height: 200px; background: rgba(0,0,0,0.9); padding: 10px; border: 1px solid #1a3a1a; font-family: 'Special Elite', monospace; font-size: 10px; color: #22c55e; overflow-y: auto; line-height: 1.6; border-radius: 2px; }
+
+        /* Level transition */
+        #level-overlay {
+            display: none; position: fixed; inset: 0; background: #000; z-index: 500;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+
+        /* Game over overlay */
+        #overlay {
+            display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.95);
+            z-index: 400; flex-direction: column; align-items: center; justify-content: center;
+        }
+
+        /* ---- LEVEL 2: RADAR ---- */
+        .radar-wrap {
+            position: relative; width: 300px; height: 300px;
+            border: 2px solid #1a4a1a;
+            border-top: 3px solid #22c55e;
+            border-left: 3px solid #22c55e;
+            background: #020c02;
+            box-shadow: 0 0 24px rgba(0,180,0,0.25), inset 0 0 40px rgba(0,0,0,0.9);
+            overflow: hidden;
+        }
+        /* Corner brackets — military scope aesthetic */
+        .radar-wrap::before, .radar-wrap::after {
+            content: ''; position: absolute; width: 18px; height: 18px;
+            border-color: #22c55e; border-style: solid; z-index: 20;
+        }
+        .radar-wrap::before { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+        .radar-wrap::after  { bottom: 0; left: 0; border-width: 0 0 2px 2px; }
+        .radar-center { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #22c55e; transform: translate(-50%,-50%); box-shadow: 0 0 10px #22c55e; z-index: 5; }
+
+        /* Torpedo status dots */
+        .torp-slot { width: 28px; height: 28px; border-radius: 50%; border: 2px solid #333; transition: all 0.4s; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+        .torp-ready { background: rgba(34,197,94,0.2); border-color: var(--green-glow); box-shadow: 0 0 8px var(--green-glow); color: #22c55e; }
+        .torp-fired { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #ef4444; }
+
+        /* Coord input */
+        .coord-input { background: #050f05; border: 1px solid #1a4a1a; color: #22c55e; font-family: 'Special Elite', monospace; font-size: 14px; padding: 6px 10px; width: 70px; text-align: center; outline: none; }
+        .coord-input:focus { border-color: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.3); }
+
+        .fire-btn { background: linear-gradient(to bottom, #7f1d1d, #450a0a); border: 2px solid #ef4444; color: #fca5a5; font-family: 'Special Elite', monospace; font-size: 12px; letter-spacing: 2px; padding: 8px 20px; cursor: pointer; transition: all 0.2s; }
+        .fire-btn:hover { background: linear-gradient(to bottom, #991b1b, #7f1d1d); box-shadow: 0 0 15px rgba(239,68,68,0.4); }
+        .fire-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* Ship blip on radar */
+        @keyframes blip-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.7); }
+        }
+        .ship-blip { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: #ef4444; animation: blip-pulse 1s infinite; box-shadow: 0 0 8px #ef4444; z-index: 20; pointer-events: none; }
+        .ship-blip.hit { background: #22c55e; animation: none; box-shadow: 0 0 12px #22c55e; }
+        .ship-blip.missed { background: #888; animation: none; box-shadow: none; }
+
+        /* Sweep arm */
+        @keyframes sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .sweep-arm {
+            position: absolute; top: 50%; left: 50%; width: 50%; height: 1px;
+            transform-origin: left center;
+            background: linear-gradient(to right, rgba(34,197,94,1.0), rgba(34,197,94,0));
+            animation: sweep 3s linear infinite; z-index: 3;
+        }
+        .sweep-trail {
+            position: absolute; inset: 0;
+            background: conic-gradient(rgba(34,197,94,0.18) 0deg, transparent 55deg);
+            animation: sweep 3s linear infinite; z-index: 2;
+        }
+
+        /* Grid lines on radar — square grid */
+        .radar-ring {
+            position: absolute;
+            border: 1px solid rgba(34,197,94,0.15);
+        }
+
+        /* Notification toast */
+        #toast { position: fixed; bottom: 20px; right: 20px; background: #1a2a1a; border: 1px solid #22c55e; color: #22c55e; font-family: 'Special Elite', monospace; font-size: 12px; padding: 10px 20px; border-radius: 2px; z-index: 600; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #000; } ::-webkit-scrollbar-thumb { background: var(--copper-dark); }
+
+        /* Button base */
+        .btn-copper { background: linear-gradient(to bottom, var(--copper), var(--copper-dark)); border: none; border-bottom: 3px solid #3a2010; color: #f4e4bc; font-family: 'Special Elite', monospace; font-size: 11px; letter-spacing: 2px; padding: 8px 16px; cursor: pointer; transition: all 0.15s; }
+        .btn-copper:hover { background: linear-gradient(to bottom, var(--copper-light), var(--copper)); }
+        .btn-copper:active { border-bottom-width: 1px; transform: translateY(2px); }
+
+        /* Level indicator */
+        .level-pip { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #444; transition: all 0.4s; }
+        .level-pip.active { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 8px var(--amber); }
+        .level-pip.done { background: var(--green-glow); border-color: var(--green-glow); }
+
+        /* Flat grid map */
+        #grid-map-wrap { background: #020802; padding: 4px; border: 1px solid #1a4a1a; }
+        #grid-map { display: grid; gap: 2px; }
+        .gc-cell {
+            width: 22px; height: 22px;
+            border: 1px solid #0d2a0d;
+            background: rgba(2,8,2,0.85);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 7px; font-family: 'Special Elite', monospace;
+            color: #0a2a0a; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .gc-cell:hover { border-color: #22c55e; background: rgba(34,197,94,0.1); }
+        .gc-label {
+            width: 16px; height: 22px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 8px; font-family: 'Special Elite', monospace;
+            color: #1a5a1a;
+        }
+
+        /* ---- LEVEL 3: 3D SUBMARINE ---- */
+        #level-3 { display:none; width:100%; height:100%; }
+        #l3-canvas-wrap {
+            position: relative; width: 100%; height: 420px;
+            background: #000a12; border: 2px solid #1a3a4a;
+            overflow: hidden; cursor: crosshair;
+        }
+        #l3-canvas { display:block; width:100%; height:100%; }
+
+        /* HUD overlays inside canvas wrap */
+        #l3-hud {
+            position:absolute; inset:0; pointer-events:none;
+            font-family:'Special Elite',monospace;
+        }
+        #l3-timer {
+            position:absolute; top:10px; left:50%; transform:translateX(-50%);
+            font-size:22px; color:#ef4444; text-shadow: 0 0 10px #ef4444;
+            letter-spacing:4px;
+        }
+        #l3-timer.safe { color:#22c55e; text-shadow: 0 0 10px #22c55e; }
+        #l3-breaches-hud {
+            position:absolute; top:10px; right:12px;
+            font-size:11px; color:#d97706; letter-spacing:2px;
+        }
+        #l3-crosshair {
+            position:absolute; top:50%; left:50%;
+            transform:translate(-50%,-50%);
+            width:24px; height:24px; pointer-events:none; opacity:0.6;
+        }
+        #l3-crosshair::before, #l3-crosshair::after {
+            content:''; position:absolute; background:#22c55e;
+        }
+        #l3-crosshair::before { width:100%; height:1px; top:50%; left:0; }
+        #l3-crosshair::after  { height:100%; width:1px; left:50%; top:0; }
+
+        /* Water fill */
+        #l3-water {
+            position:absolute; bottom:0; left:0; width:100%;
+            background: linear-gradient(to top, rgba(0,80,180,0.55), rgba(0,120,220,0.15));
+            transition: height 1s linear;
+            pointer-events:none;
+            border-top: 2px solid rgba(100,180,255,0.4);
+        }
+        #l3-water-label {
+            position:absolute; bottom:0; left:0; width:100%;
+            font-family:'Special Elite',monospace; font-size:9px;
+            color:rgba(100,200,255,0.7); text-align:center; letter-spacing:2px;
+            padding-bottom:2px; pointer-events:none;
+        }
+
+        /* Interaction prompt */
+        #l3-prompt {
+            position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+            background:rgba(0,0,0,0.7); border:1px solid #8B5E3C;
+            color:#d4c5a1; font-family:'Special Elite',monospace;
+            font-size:11px; padding:6px 16px; letter-spacing:2px;
+            white-space:nowrap; pointer-events:none;
+            transition: opacity 0.3s;
+        }
+
+        /* Alarm flash */
+        @keyframes alarm-flash { 0%,100%{opacity:0} 50%{opacity:1} }
+        #l3-alarm {
+            position:absolute; inset:0; pointer-events:none;
+            border: 4px solid #ef4444;
+            animation: alarm-flash 0.8s infinite;
+            display:none;
+        }
+
+        /* Controls bar */
+        #l3-controls {
+            display:flex; gap:6px; justify-content:center;
+            padding:8px 0; background:#050709;
+            border-top:1px solid #1a2a1a;
+        }
+        .l3-ctrl-btn {
+            background:#111; border:1px solid #333; color:#888;
+            font-family:'Special Elite',monospace; font-size:10px;
+            padding:5px 10px; letter-spacing:1px; cursor:default;
+        }
+
+        /* Breaches sidebar list */
+        #l3-breach-list { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+        .breach-item {
+            display:flex; align-items:center; gap:8px;
+            font-family:'Special Elite',monospace; font-size:10px;
+            padding:5px 8px; border:1px solid #1a2a1a; background:#050709;
+            transition: all 0.3s;
+        }
+        .breach-item.fixed { border-color:#22c55e; color:#22c55e; }
+        .breach-item.active { border-color:#ef4444; color:#ef4444; animation: alarm-flash 1s infinite; }
+        .breach-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+        @keyframes scan-line { 0% { top: -2px; } 100% { top: 100%; } }
+        .scan-line { position: absolute; left: 0; width: 100%; height: 2px; background: rgba(34,197,94,0.3); animation: scan-line 2s linear infinite; pointer-events: none; }
+    </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div class="crt-overlay"></div>
+<div id="toast"></div>
+
+<!-- LEVEL TRANSITION SCREEN -->
+<div id="level-overlay">
+    <div style="text-align:center; max-width: 500px; padding: 40px;">
+        <div id="lt-icon" style="font-size: 60px; margin-bottom: 20px;">⚡</div>
+        <h1 id="lt-title" class="font-retro" style="font-size: 2.5rem; color: #22c55e; margin-bottom: 16px;"></h1>
+        <p id="lt-desc" style="color: #6b7280; font-size: 1.1rem; margin-bottom: 32px; font-style: italic;"></p>
+        <div style="width: 200px; height: 3px; background: #1a3a1a; margin: 0 auto 32px; overflow: hidden; border-radius: 2px;">
+            <div id="lt-bar" style="height:100%; width:0; background: #22c55e; transition: width 2s linear;"></div>
+        </div>
+        <p class="font-retro" style="font-size: 10px; color: #444; letter-spacing: 3px;">CARGANDO SIGUIENTE MÓDULO...</p>
+    </div>
+</div>
+
+<!-- MAIN GAME CONTAINER -->
+<div class="min-h-screen p-3 flex items-center justify-center" style="height:100vh;">
+<div class="w-full max-w-6xl bg-[#1a1c1e] p-5 sp-border rounded-lg relative" style="overflow: hidden; max-height: 95vh;">
+
+    <!-- GAME OVER / WIN OVERLAY -->
+    <div id="overlay">
+        <h1 id="status-title" class="font-retro mb-4" style="font-size: 3rem;"></h1>
+        <p id="status-desc" class="mb-8" style="color: #6b7280; font-style: italic;"></p>
+        <button onclick="resetGame()" class="btn-copper" style="padding: 12px 32px; font-size: 13px;">↻ REINICIAR SISTEMAS</button>
+    </div>
+
+    <div class="grid grid-cols-12 gap-4" style="height: 100%;">
+
+        <!-- SIDEBAR -->
+        <aside class="col-span-3" style="display: flex; flex-direction: column; gap: 12px;">
+
+            <!-- Header / Logo -->
+            <div class="sp-border-inner" style="background: #0d0f10; padding: 14px;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <div style="width:8px; height:8px; background:var(--amber); border-radius:50%; box-shadow: 0 0 8px var(--amber);"></div>
+                    <span class="font-retro" style="color:var(--copper-light); font-size:13px; letter-spacing:2px;">PERAL OS v2.0</span>
+                </div>
+                <div style="font-size:9px; color:var(--text-dim); letter-spacing:1px; margin-bottom:12px;">SISTEMA DE CONTROL SUBMARINO</div>
+
+                <!-- Level indicators -->
+                <div style="display:flex; gap:6px; align-items:center; margin-bottom:10px;">
+                    <span style="font-size:9px; color:var(--text-dim); letter-spacing:1px;">NIVEL</span>
+                    <div class="level-pip" id="pip-1"></div>
+                    <div class="level-pip" id="pip-2"></div>
+                    <div class="level-pip" id="pip-3"></div>
+                    <div class="level-pip" id="pip-4"></div>
+                    <div class="level-pip" id="pip-5"></div>
+                </div>
+
+                <!-- Lives -->
+                <div style="display:flex; gap:8px;" id="fuses">
+                    <div class="life-fuse fuse-on"></div>
+                    <div class="life-fuse fuse-on"></div>
+                    <div class="life-fuse fuse-on"></div>
+                </div>
+            </div>
+
+            <!-- Mission briefing -->
+            <div class="sp-border-inner" style="background:#050709; padding:12px; flex-shrink:0;">
+                <div class="font-retro" style="font-size:9px; color:var(--copper); letter-spacing:2px; margin-bottom:8px;">▸ MISIÓN ACTIVA</div>
+                <p id="mission-text" style="font-size:11px; color:#8a9a8a; line-height:1.6;"></p>
+            <div id="l3-breach-list"></div>
+            </div>
+
+            <!-- Console -->
+            <div id="console" style="flex:1; min-height:120px;">
+                <p style="color:#4a7a4a;">> Sistema iniciado...</p>
+            </div>
+
+        </aside>
+
+        <!-- MAIN PANEL -->
+        <main class="col-span-9 sp-border-inner" style="background: var(--bg-inner); padding: 20px; position: relative; overflow: hidden;">
+
+            <!-- Top bar -->
+            <header style="display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; border-bottom: 1px solid #1f2023; margin-bottom:20px;">
+                <div>
+                    <span id="level-badge" class="font-retro" style="font-size:11px; color:var(--copper-light); letter-spacing:3px;"></span>
+                </div>
+                <div id="header-info" style="font-size:9px; color:var(--text-dim); letter-spacing:2px; text-transform:uppercase;"></div>
+            </header>
+
+            <!-- =================== LEVEL 1 =================== -->
+            <div id="level-1">
+                <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:24px; margin-bottom:24px;">
+                    <!-- Bank 0 -->
+                    <div style="display:flex; flex-direction:column; align-items:center;">
+                        <div class="gauge-box">
+                            <div class="gauge-bg"></div>
+                            <div id="needle-0" class="needle" style="transform: rotate(-90deg)"></div>
+                        </div>
+                        <div id="v-0" class="font-retro" style="margin-top:10px; font-size:2rem; color:var(--amber);">0.00V</div>
+                        <div style="font-size:9px; color:var(--text-dim); letter-spacing:2px; margin-bottom:6px;">BANCO B-01</div>
+                        <button class="bank-btn" onclick="fill(0)">▼ CARGAR B-01</button>
+                    </div>
+                    <!-- Bank 1 -->
+                    <div style="display:flex; flex-direction:column; align-items:center;">
+                        <div class="gauge-box">
+                            <div class="gauge-bg"></div>
+                            <div id="needle-1" class="needle" style="transform: rotate(-90deg)"></div>
+                        </div>
+                        <div id="v-1" class="font-retro" style="margin-top:10px; font-size:2rem; color:var(--amber);">0.00V</div>
+                        <div style="font-size:9px; color:var(--text-dim); letter-spacing:2px; margin-bottom:6px;">BANCO B-02</div>
+                        <button class="bank-btn" onclick="fill(1)">▼ CARGAR B-02</button>
+                    </div>
+                    <!-- Bank 2 -->
+                    <div style="display:flex; flex-direction:column; align-items:center;">
+                        <div class="gauge-box">
+                            <div class="gauge-bg"></div>
+                            <div id="needle-2" class="needle" style="transform: rotate(-90deg)"></div>
+                        </div>
+                        <div id="v-2" class="font-retro" style="margin-top:10px; font-size:2rem; color:var(--amber);">0.00V</div>
+                        <div style="font-size:9px; color:var(--text-dim); letter-spacing:2px; margin-bottom:6px;">BANCO B-03</div>
+                        <button class="bank-btn" onclick="fill(2)">▼ CARGAR B-03</button>
+                    </div>
+                </div>
+
+                <!-- Cells -->
+                <div class="sp-border-inner" style="background:#050709; padding:16px;">
+                    <div class="font-retro" style="font-size:9px; color:var(--text-dim); letter-spacing:3px; text-align:center; margin-bottom:12px;">▸ CÉLULAS DE ENERGÍA DISPONIBLES</div>
+                    <div id="cells" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;"></div>
+                </div>
+
+                <!-- L1 hint -->
+                <div style="margin-top:12px; text-align:center; font-size:10px; color:#2a4a2a; font-style:italic;">
+                    Objetivo: cada banco debe alcanzar exactamente 31.25V • Selecciona una célula → clic en el banco
+                </div>
+            </div>
+
+            <!-- =================== LEVEL 2 =================== -->
+            <div id="level-2" style="display:none;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px; height:100%;">
+
+                    <!-- Left: RADAR = mapa interactivo unificado -->
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div class="font-retro" style="font-size:9px; color:#1a5a1a; letter-spacing:3px;">▸ PANTALLA DE RADAR SONAR — CUADRÍCULA TÁCTICA</div>
+
+                        <!-- Radar grid unificado: sweep encima del grid clicable -->
+                        <div style="position:relative; display:inline-block;">
+                            <!-- El sweep animado va ENCIMA del grid, pointer-events:none -->
+                            <div id="radar-sweep-overlay" style="
+                                position:absolute; inset:0;
+                                pointer-events:none; z-index:5; overflow:hidden;
+                                background:transparent;
+                            ">
+                                <div class="sweep-trail" style="position:absolute;inset:0; border-radius:0;"></div>
+                                <div class="sweep-arm" style="position:absolute; top:50%; left:50%; width:50%; height:1px; transform-origin:left center;"></div>
+                                <div style="position:absolute;top:50%;left:50%;width:6px;height:6px;background:#22c55e;transform:translate(-50%,-50%);box-shadow:0 0 10px #22c55e;border-radius:50%;z-index:6;"></div>
+                                <div class="scan-line"></div>
+                            </div>
+                            <!-- Grid táctica clicable -->
+                            <div id="radar-grid-wrap" style="
+                                position:relative; z-index:10;
+                                background:transparent;
+                                padding:4px;
+                                border:2px solid #1a4a1a;
+                                border-top:3px solid #22c55e;
+                                border-left:3px solid #22c55e;
+                                box-shadow:0 0 24px rgba(0,180,0,0.25), inset 0 0 40px rgba(0,0,0,0.9);
+                            ">
+                                <div id="radar-grid"></div>
+                            </div>
+                        </div>
+
+                        <!-- Torpedo slots -->
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:4px;">
+                            <span class="font-retro" style="font-size:9px; color:var(--text-dim); letter-spacing:1px; margin-right:4px;">TORPEDOS:</span>
+                            <div id="torp-slots" style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <div class="torp-slot torp-ready font-retro" id="torp-0">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-1">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-2">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-3">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-4">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-5">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-6">T</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Control panel -->
+                    <div style="display:flex; flex-direction:column; gap:10px; overflow:hidden; min-height:0;">
+
+                        <!-- Ship info display -->
+                        <div class="sp-border-inner" style="background:#020802; padding:14px;">
+                            <div class="font-retro" style="font-size:9px; color:#1a4a1a; letter-spacing:2px; margin-bottom:8px;">▸ CONTACTO SONAR DETECTADO</div>
+                            <div id="ship-info" style="font-size:12px; color:#22c55e; line-height:1.8;">
+                                <span style="color:#4a6a4a;">Esperando señal del radar...</span>
+                            </div>
+                        </div>
+
+                        <!-- Coordinate input -->
+                        <div class="sp-border-inner" style="background:#020802; padding:14px;">
+                            <div class="font-retro" style="font-size:9px; color:#1a4a1a; letter-spacing:2px; margin-bottom:12px;">▸ INTRODUCIR COORDENADAS DE DISPARO</div>
+
+                            <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+                                <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
+                                    <label class="font-retro" style="font-size:9px; color:var(--text-dim); letter-spacing:1px;">EJE X</label>
+                                    <input type="number" id="coord-x" class="coord-input" min="0" max="9" placeholder="0-9" />
+                                </div>
+                                <div style="font-size:20px; color:#1a4a1a; margin-top:16px;">×</div>
+                                <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
+                                    <label class="font-retro" style="font-size:9px; color:var(--text-dim); letter-spacing:1px;">EJE Y</label>
+                                    <input type="number" id="coord-y" class="coord-input" min="0" max="9" placeholder="0-9" />
+                                </div>
+                                <button class="fire-btn" id="fire-btn" onclick="fireTorpedo()" style="margin-top:16px;">⊕ FUEGO</button>
+                            </div>
+
+                            <div id="shot-result" style="font-size:11px; color:#4a6a4a; font-style:italic; min-height:18px;"></div>
+                        </div>
+
+                        <!-- Instrucciones -->
+                        <div class="sp-border-inner" style="background:#020802; padding:10px;">
+                            <div class="font-retro" style="font-size:9px; color:#1a4a1a; letter-spacing:2px; margin-bottom:6px;">▸ INSTRUCCIONES DE PUNTERÍA</div>
+                            <div style="font-size:10px; color:#2a5a2a; line-height:1.7;">
+                                1. Las señales <span style="color:#ef4444;">●</span> rojas son contactos enemigos.<br>
+                                2. Haz clic sobre una señal roja en el radar.<br>
+                                3. Las coordenadas se cargarán automáticamente.<br>
+                                4. Pulsa <span style="color:#fca5a5;">⊕ FUEGO</span> para lanzar el torpedo.
+                            </div>
+                        </div>
+
+                        <!-- Score -->
+                        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim);">
+                            <span class="font-retro">IMPACTOS: <span id="hits-count" style="color:#22c55e;">0</span></span>
+                            <span class="font-retro">DISPAROS: <span id="shots-count" style="color:var(--amber);">0</span></span>
+                            <span class="font-retro">OBJETIVO: <span style="color:#4a6a4a;" id="target-count">?</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- =================== LEVEL 3 =================== -->
+            <div id="level-3">
+                <!-- 3D viewport -->
+                <div id="l3-canvas-wrap">
+                    <canvas id="l3-canvas"></canvas>
+                    <div id="l3-hud">
+                        <div id="l3-timer" class="safe">02:00</div>
+                        <div id="l3-breaches-hud">BRECHAS: <span id="l3-b-count">5</span>/5</div>
+                        <div id="l3-crosshair"></div>
+                        <div id="l3-water" style="height:0%">
+                            <div id="l3-water-label">NIVEL DEL AGUA</div>
+                        </div>
+                        <div id="l3-prompt" style="opacity:0">Acércate a una brecha</div>
+                        <div id="l3-alarm"></div>
+                    </div>
+                </div>
+                <!-- Controls hint -->
+                <div id="l3-controls">
+                    <div class="l3-ctrl-btn">W/↑ Avanzar</div>
+                    <div class="l3-ctrl-btn">S/↓ Retroceder</div>
+                    <div class="l3-ctrl-btn">A/← Girar izq.</div>
+                    <div class="l3-ctrl-btn">D/→ Girar der.</div>
+                    <div class="l3-ctrl-btn">E / CLIC — Reparar brecha</div>
+                </div>
+            </div>
+
+            <!-- =================== LEVEL 4 =================== -->
+            <div id="level-4" style="display:none; width:100%; height:100%;">
+                <div id="l4-canvas-wrap" style="position:relative; width:100%; height:420px; background:#000a12; border:2px solid #1a3a4a; overflow:hidden; cursor:crosshair;">
+                    <canvas id="l4-canvas"></canvas>
+                    <div id="l4-hud" style="position:absolute;inset:0;pointer-events:none;font-family:'Special Elite',monospace;">
+                        <div id="l4-prompt" style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);border:1px solid #8B5E3C;color:#d4c5a1;font-family:'Special Elite',monospace;font-size:11px;padding:6px 16px;letter-spacing:2px;white-space:nowrap;pointer-events:none;transition:opacity 0.3s;opacity:0;">Acércate al panel</div>
+                        <div id="l4-crosshair" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:24px;height:24px;pointer-events:none;opacity:0.6;">
+                            <div style="position:absolute;width:100%;height:1px;background:#22c55e;top:50%;left:0;"></div>
+                            <div style="position:absolute;height:100%;width:1px;background:#22c55e;left:50%;top:0;"></div>
+                        </div>
+                    </div>
+                    <!-- Cable puzzle overlay -->
+                    <div id="l4-puzzle" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.92);z-index:50;display:none;align-items:center;justify-content:center;flex-direction:column;">
+                        <div style="font-family:'Special Elite',monospace;font-size:11px;color:#8B5E3C;letter-spacing:3px;margin-bottom:16px;">▸ PANEL DE CONEXIONES ELÉCTRICAS</div>
+                        <div id="l4-cable-board" style="position:relative;width:420px;height:340px;background:#050a0a;border:2px solid #1a4a2a;padding:10px;">
+                            <canvas id="l4-wire-canvas" width="420" height="340" style="position:absolute;inset:0;pointer-events:none;z-index:2;"></canvas>
+                            <div id="l4-left-pins" style="position:absolute;left:20px;top:0;height:100%;display:flex;flex-direction:column;justify-content:space-around;z-index:3;"></div>
+                            <div id="l4-right-pins" style="position:absolute;right:20px;top:0;height:100%;display:flex;flex-direction:column;justify-content:space-around;z-index:3;"></div>
+                        </div>
+                        <div id="l4-status" style="margin-top:12px;font-family:'Special Elite',monospace;font-size:10px;color:#4a6a4a;letter-spacing:2px;">Haz clic en un cable y luego en su destino del mismo color</div>
+                        <button onclick="closeL4Puzzle()" style="margin-top:10px;background:#1a1a1a;border:1px solid #333;color:#666;font-family:'Special Elite',monospace;font-size:9px;padding:4px 12px;cursor:pointer;letter-spacing:2px;">✕ CERRAR</button>
+                    </div>
+                </div>
+                <div style="display:flex;gap:6px;justify-content:center;padding:8px 0;background:#050709;border-top:1px solid #1a2a1a;">
+                    <div class="l3-ctrl-btn">W/↑ Avanzar</div>
+                    <div class="l3-ctrl-btn">S/↓ Retroceder</div>
+                    <div class="l3-ctrl-btn">A/← Girar izq.</div>
+                    <div class="l3-ctrl-btn">D/→ Girar der.</div>
+                    <div class="l3-ctrl-btn">E / CLIC — Interactuar</div>
+                </div>
+            </div>
+
+            <!-- =================== LEVEL 5 =================== -->
+            <div id="level-5" style="display:none; width:100%; height:100%;">
+                <div id="l5-canvas-wrap" style="position:relative; width:100%; height:420px; background:#000a12; border:2px solid #1a3a4a; overflow:hidden; cursor:crosshair;">
+                    <canvas id="l5-canvas"></canvas>
+                    <div id="l5-hud" style="position:absolute;inset:0;pointer-events:none;font-family:'Special Elite',monospace;">
+                        <div id="l5-prompt" style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);border:1px solid #8B5E3C;color:#d4c5a1;font-family:'Special Elite',monospace;font-size:11px;padding:6px 16px;letter-spacing:2px;white-space:nowrap;pointer-events:none;transition:opacity 0.3s;opacity:0;">Acércate al monitor</div>
+                        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:24px;height:24px;pointer-events:none;opacity:0.6;">
+                            <div style="position:absolute;width:100%;height:1px;background:#22c55e;top:50%;left:0;"></div>
+                            <div style="position:absolute;height:100%;width:1px;background:#22c55e;left:50%;top:0;"></div>
+                        </div>
+                    </div>
+                    <!-- Parking mini-game overlay -->
+                    <div id="l5-game-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.92);z-index:50;align-items:center;justify-content:center;flex-direction:column;">
+                        <div style="font-family:'Special Elite',monospace;font-size:11px;color:#8B5E3C;letter-spacing:3px;margin-bottom:10px;">▸ SISTEMA DE NAVEGACIÓN — ATRAQUE</div>
+                        <canvas id="l5-park-canvas" width="500" height="320" style="border:2px solid #1a4a2a;background:#020c18;display:block;"></canvas>
+                        <div id="l5-park-status" style="margin-top:8px;font-family:'Special Elite',monospace;font-size:10px;color:#4a6a4a;letter-spacing:2px;">Usa las teclas ← → ↑ ↓ para maniobrar el submarino</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:6px;justify-content:center;padding:8px 0;background:#050709;border-top:1px solid #1a2a1a;">
+                    <div class="l3-ctrl-btn">W/↑ Avanzar</div>
+                    <div class="l3-ctrl-btn">S/↓ Retroceder</div>
+                    <div class="l3-ctrl-btn">A/← Girar izq.</div>
+                    <div class="l3-ctrl-btn">D/→ Girar der.</div>
+                    <div class="l3-ctrl-btn">E / CLIC — Interactuar</div>
+                </div>
+            </div>
+            <!-- =================== /LEVELS =================== -->
+
+
+        </main>
+    </div>
+</div>
+</div>
+
+<script>
+// ============================================================
+//  GLOBAL STATE
+// ============================================================
+const GOAL = 31.25;
+const DATA = [10.25, 21.00, 15.50, 15.75, 12.50, 10.00, 8.75];
+// Solution: (10.25+21.00)=31.25 | (15.50+15.75)=31.25 | (12.50+10.00+8.75)=31.25
+
+let currentLevel = 5;
+
+let state = {
+    lives: 3,
+    volts: [0, 0, 0],
+    inventory: [...DATA],
+    selectedIdx: null
+};
+
+// Level 2 state
+let l2 = {
+    ships: [],          // { x, y, hit }
+    shots: [],          // { x, y, hit }
+    torpedosLeft: 5,
+    hitsNeeded: 3,
+    hits: 0,
+    active: true
+};
+
+// ============================================================
+//  CONSOLE + TOAST
+// ============================================================
+function print(msg, type = "info") {
+    const c = document.getElementById('console');
+    const colors = { info: '#22c55e', err: '#ef4444', warn: '#d97706', sys: '#6b7280' };
+    const color = colors[type] || colors.info;
+    const el = document.createElement('p');
+    el.style.color = color;
+    el.textContent = '> ' + msg;
+    c.appendChild(el);
+    c.scrollTop = c.scrollHeight;
+}
+
+function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; }, 2500);
+}
+
+// ============================================================
+//  LEVEL MANAGEMENT
+// ============================================================
+function updateLevelPips() {
+    for (let i = 1; i <= 5; i++) {
+        const pip = document.getElementById(`pip-${i}`);
+        if (!pip) continue;
+        pip.classList.remove('active', 'done');
+        if (i < currentLevel) pip.classList.add('done');
+        else if (i === currentLevel) pip.classList.add('active');
+    }
+}
+
+function setMissionText(txt) {
+    document.getElementById('mission-text').textContent = txt;
+}
+
+function showLevel(n) {
+    document.getElementById('level-1').style.display = 'none';
+    document.getElementById('level-2').style.display = 'none';
+    document.getElementById('level-3').style.display = 'none';
+    if (document.getElementById('level-4')) document.getElementById('level-4').style.display = 'none';
+    if (document.getElementById('level-5')) document.getElementById('level-5').style.display = 'none';
+    if (document.getElementById(`level-${n}`)) {
+        document.getElementById(`level-${n}`).style.display = 'block';
+    }
+    currentLevel = n;
+    updateLevelPips();
+
+    if (n === 1) {
+        document.getElementById('level-badge').textContent = 'NIVEL 01 — SALA DE ACUMULADORES';
+        document.getElementById('header-info').textContent = 'Protocolo de carga: 31.25V por banco';
+        setMissionText('Los acumuladores del Peral están descargados. Combina las células de energía para cargar cada banco a exactamente 31.25 voltios.');
+    } else if (n === 2) {
+        document.getElementById('level-badge').textContent = 'NIVEL 02 — SALA DE TORPEDOS';
+        document.getElementById('header-info').textContent = 'Sistema de puntería — coordenadas (0-9)';
+        setMissionText('El radar detecta barcos enemigos. Localiza las señales rojas e introduce sus coordenadas exactas para lanzar el torpedo. ¡No malgastes munición!');
+        initLevel2();
+    } else if (n === 3) {
+        document.getElementById('level-badge').textContent = 'NIVEL 03 — CASCO DEL PERAL';
+        document.getElementById('header-info').textContent = 'Brecha estructural — reparación urgente';
+        setMissionText('¡El casco tiene 5 brechas! Muévete por el interior del submarino, localiza cada grieta y repárala antes de que el agua lo inunde todo. Tienes 2 minutos.');
+        initLevel3();
+    } else if (n === 4) {
+        document.getElementById('level-badge').textContent = 'NIVEL 04 — SALA DE MÁQUINAS';
+        document.getElementById('header-info').textContent = 'Cableado eléctrico — reconexión urgente';
+        setMissionText('Los cables del panel eléctrico se han soltado. Acércate al monitor y conecta cada cable con su color correspondiente para restaurar la energía.');
+        initLevel4();
+    } else if (n === 5) {
+        document.getElementById('level-badge').textContent = 'NIVEL 05 — PUESTO DE MANDO';
+        document.getElementById('header-info').textContent = 'Maniobra de atraque — precisión máxima';
+        setMissionText('Isaac Peral debe atracar el submarino en la bahía. Acércate al monitor de navegación y guía el submarino hasta la zona de atraque marcada.');
+        initLevel5();
+    }
+}
+
+function transitionToLevel(n) {
+    const configs = {
+        2: {
+            icon: '🎯',
+            title: '¡ENERGÍA ESTABILIZADA!',
+            desc: 'Los acumuladores operan al 100%. Isaac Peral activa los torpedos — se detectan contactos enemigos en el sonar.'
+        },
+        3: {
+            icon: '🔧',
+            title: '¡OBJETIVOS NEUTRALIZADOS!',
+            desc: 'Flota enemiga hundida. Pero el cañoneo dañó el casco — ¡5 brechas detectadas! El agua entra. Hay que repararlas YA.'
+        },
+        4: {
+            icon: '⚡',
+            title: '¡CASCO REPARADO!',
+            desc: 'El Peral está estanco. Pero los cables del panel eléctrico se han soltado — sin energía no hay control. ¡Reconecta los sistemas!'
+        },
+        5: {
+            icon: '🎮',
+            title: '¡ENERGÍA RESTAURADA!',
+            desc: 'Todos los sistemas online. Misión final: guiar el Peral hasta la bahía de Cartagena. ¡Atraca con precisión!'
+        }
+    };
+    const cfg = configs[n] || { icon: '⚡', title: 'NIVEL COMPLETADO', desc: '' };
+
+    const overlay = document.getElementById('level-overlay');
+    const bar = document.getElementById('lt-bar');
+    document.getElementById('lt-icon').textContent = cfg.icon;
+    document.getElementById('lt-title').textContent = cfg.title;
+    document.getElementById('lt-desc').textContent = cfg.desc;
+
+    overlay.style.display = 'flex';
+    bar.style.width = '0';
+    setTimeout(() => { bar.style.width = '100%'; }, 100);
+    setTimeout(() => {
+        overlay.style.display = 'none';
+        bar.style.width = '0';
+        showLevel(n);
+    }, 2800);
+}
+
+// ============================================================
+//  LEVEL 1 — ACUMULADORES
+// ============================================================
+function updateL1UI() {
+    // Render cells
+    const container = document.getElementById('cells');
+    container.innerHTML = '';
+    state.inventory.forEach((val, i) => {
+        const btn = document.createElement('button');
+        btn.className = `cell-btn font-retro ${state.selectedIdx === i ? 'selected' : ''}`;
+        btn.textContent = val.toFixed(2);
+        btn.onclick = () => { state.selectedIdx = i; updateL1UI(); };
+        container.appendChild(btn);
+    });
+
+    // Update needles + volt displays
+    state.volts.forEach((v, i) => {
+        const txt = document.getElementById(`v-${i}`);
+        txt.textContent = v.toFixed(2) + 'V';
+        if (v === GOAL) {
+            txt.style.color = '#22c55e';
+            txt.style.textShadow = '0 0 10px #22c55e';
+        } else if (v > GOAL) {
+            txt.style.color = '#ef4444';
+            txt.style.textShadow = '0 0 10px #ef4444';
+            txt.style.animation = 'pulse 0.5s infinite alternate';
+        } else {
+            txt.style.color = 'var(--amber)';
+            txt.style.textShadow = 'none';
+            txt.style.animation = '';
+        }
+        const angle = (Math.min(v, 40) / 40 * 180) - 90;
+        document.getElementById(`needle-${i}`).style.transform = `rotate(${angle}deg)`;
+    });
+
+    // Update fuses
+    updateFuses();
+}
+
+function fill(bankIdx) {
+    if (state.selectedIdx === null) {
+        print('AVISO: Selecciona una célula primero.', 'warn');
+        toast('⚠ Selecciona una célula primero');
+        return;
+    }
+    const value = state.inventory[state.selectedIdx];
+    state.volts[bankIdx] = parseFloat((state.volts[bankIdx] + value).toFixed(2));
+    state.inventory.splice(state.selectedIdx, 1);
+    state.selectedIdx = null;
+    print(`+${value}V enviados al Banco B-0${bankIdx + 1}. Total: ${state.volts[bankIdx].toFixed(2)}V`);
+    updateL1UI();
+    checkL1Game();
+}
+
+function checkL1Game() {
+    const allCorrect = state.volts.every(v => v === GOAL);
+    const overLimit = state.volts.some(v => v > GOAL);
+    const noMoves = state.inventory.length === 0 && !allCorrect;
+
+    if (allCorrect) {
+        print('✓ TODOS LOS BANCOS ESTABILIZADOS. ¡Misión completada!', 'info');
+        setTimeout(() => transitionToLevel(2), 800);
+        return;
+    }
+    if (overLimit || noMoves) {
+        state.lives--;
+        updateFuses();
+        if (state.lives <= 0) {
+            showOverlay('COLAPSO TOTAL', 'Has fundido los plomos del submarino. Sistema inutilizado.', '#ef4444');
+        } else {
+            print(overLimit ? 'SOBRECARGA DETECTADA — Reiniciando nivel...' : 'SIN COMBINACIÓN VÁLIDA — Reiniciando...', 'err');
+            toast(overLimit ? '⚡ Sobrecarga — reiniciando' : '⛔ Sin solución — reiniciando');
+            setTimeout(softResetL1, 1400);
+        }
+    }
+}
+
+function softResetL1() {
+    state.volts = [0, 0, 0];
+    state.inventory = [...DATA];
+    state.selectedIdx = null;
+    updateL1UI();
+}
+
+// ============================================================
+//  LEVEL 2 — TORPEDOS / RADAR UNIFICADO
+// ============================================================
+// Una sola cuadrícula 10x10 actúa de radar Y de mapa de disparo.
+// Los blips rojos se superponen encima de la celda exacta.
+// El jugador hace clic en la señal roja → coordenadas cargadas → FUEGO.
+
+const GRID_SIZE = 10;
+const CELL_PX = 28; // tamaño de celda en px
+
+function buildRadarGrid() {
+    const grid = document.getElementById('radar-grid');
+    grid.innerHTML = '';
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = `20px repeat(${GRID_SIZE}, ${CELL_PX}px)`;
+    grid.style.gap = '1px';
+    grid.style.background = '#020c02';
+    grid.style.padding = '2px';
+
+    // Fila de etiquetas X
+    const corner = document.createElement('div');
+    corner.style.cssText = 'width:20px;height:16px;';
+    grid.appendChild(corner);
+    for (let x = 0; x < GRID_SIZE; x++) {
+        const lbl = document.createElement('div');
+        lbl.style.cssText = `width:${CELL_PX}px;height:16px;display:flex;align-items:center;justify-content:center;font-family:'Special Elite',monospace;font-size:8px;color:#1a5a1a;`;
+        lbl.textContent = x;
+        grid.appendChild(lbl);
+    }
+
+    // Filas Y=9 (arriba) hasta Y=0 (abajo)
+    for (let y = GRID_SIZE - 1; y >= 0; y--) {
+        const lblY = document.createElement('div');
+        lblY.style.cssText = `width:20px;height:${CELL_PX}px;display:flex;align-items:center;justify-content:center;font-family:'Special Elite',monospace;font-size:8px;color:#1a5a1a;`;
+        lblY.textContent = y;
+        grid.appendChild(lblY);
+
+        for (let x = 0; x < GRID_SIZE; x++) {
+            const cell = document.createElement('div');
+            cell.id = `rgc-${x}-${y}`;
+            cell.style.cssText = `
+                width:${CELL_PX}px; height:${CELL_PX}px;
+                background:rgba(2,12,2,0.85);
+                border:1px solid rgba(34,197,94,0.12);
+                position:relative;
+                display:flex; align-items:center; justify-content:center;
+                cursor:pointer; transition:all 0.15s;
+                font-family:'Special Elite',monospace; font-size:8px;
+            `;
+            cell.title = `(${x},${y})`;
+            cell.addEventListener('mouseenter', () => {
+                if (!cell.dataset.state) cell.style.borderColor = 'rgba(34,197,94,0.5)';
+            });
+            cell.addEventListener('mouseleave', () => {
+                if (!cell.dataset.state) cell.style.borderColor = 'rgba(34,197,94,0.12)';
+            });
+            cell.onclick = () => onRadarCellClick(x, y, cell);
+            grid.appendChild(cell);
+        }
+    }
+}
+
+function onRadarCellClick(x, y, cell) {
+    if (!l2.active) return;
+    // Resaltar celda apuntada
+    document.querySelectorAll('[id^="rgc-"]').forEach(c => {
+        if (!c.dataset.state) c.style.outline = '';
+    });
+    if (!cell.dataset.state) {
+        cell.style.outline = '2px solid #d97706';
+    }
+    // Cargar coordenadas
+    document.getElementById('coord-x').value = x;
+    document.getElementById('coord-y').value = y;
+}
+
+function renderRadar() {
+    // Pinta los blips de barcos sobre las celdas exactas
+    // Primero elimina blips anteriores
+    document.querySelectorAll('.ship-blip').forEach(b => b.remove());
+
+    l2.ships.forEach((ship, idx) => {
+        const cell = document.getElementById(`rgc-${ship.x}-${ship.y}`);
+        if (!cell) return;
+
+        if (ship.hit) {
+            // Celda hundida — verde con X
+            cell.dataset.state = 'hit';
+            cell.style.background = 'rgba(34,197,94,0.20)';
+            cell.style.borderColor = '#22c55e';
+            cell.style.color = '#22c55e';
+            cell.style.boxShadow = '0 0 8px rgba(34,197,94,0.5)';
+            cell.style.outline = '';
+            cell.textContent = '✕';
+        } else {
+            // Blip rojo animado superpuesto en la celda
+            const blip = document.createElement('div');
+            blip.className = 'ship-blip';
+            blip.id = `blip-${idx}`;
+            blip.title = `Contacto — haz clic para apuntar`;
+            blip.style.cssText = `
+                position:absolute; inset:0; margin:auto;
+                width:10px; height:10px; border-radius:50%;
+                background:#ef4444; box-shadow:0 0 8px #ef4444;
+                animation:blip-pulse 1s infinite;
+                z-index:20; pointer-events:none;
+                transform:none;
+            `;
+            cell.appendChild(blip);
+            // La celda es clicable → se carga la coord automáticamente
+        }
+    });
+}
+
+function updateL2Blips() {
+    l2.ships.forEach((ship, idx) => {
+        if (ship.hit) {
+            const cell = document.getElementById(`rgc-${ship.x}-${ship.y}`);
+            if (cell) {
+                // Quitar blip animado
+                const blip = document.getElementById(`blip-${idx}`);
+                if (blip) blip.remove();
+                // Marcar celda como hundida
+                cell.dataset.state = 'hit';
+                cell.style.background = 'rgba(34,197,94,0.20)';
+                cell.style.borderColor = '#22c55e';
+                cell.style.color = '#22c55e';
+                cell.style.boxShadow = '0 0 8px rgba(34,197,94,0.5)';
+                cell.style.outline = '';
+                cell.textContent = '✕';
+            }
+        }
+    });
+}
+
+function markShotCell(x, y, isHit) {
+    const cell = document.getElementById(`rgc-${x}-${y}`);
+    if (!cell || cell.dataset.state === 'hit') return;
+    cell.dataset.state = isHit ? 'hit' : 'miss';
+    if (isHit) {
+        cell.style.background = 'rgba(34,197,94,0.20)';
+        cell.style.borderColor = '#22c55e';
+        cell.style.color = '#22c55e';
+        cell.style.boxShadow = '0 0 8px rgba(34,197,94,0.5)';
+        cell.style.outline = '';
+        cell.textContent = '✕';
+    } else {
+        cell.style.background = 'rgba(239,68,68,0.10)';
+        cell.style.borderColor = 'rgba(239,68,68,0.4)';
+        cell.style.color = '#ef4444';
+        cell.style.outline = '';
+        cell.textContent = '·';
+    }
+}
+
+function initLevel2() {
+    l2 = {
+        ships: [],
+        shots: [],
+        torpedosLeft: 7,
+        hitsNeeded: 3,
+        hits: 0,
+        active: true
+    };
+
+    const placed = [];
+    let attempts = 0;
+    while (l2.ships.length < 3 && attempts < 200) {
+        attempts++;
+        const x = Math.floor(Math.random() * GRID_SIZE);
+        const y = Math.floor(Math.random() * GRID_SIZE);
+        const tooClose = placed.some(p => Math.abs(p.x - x) + Math.abs(p.y - y) < 3);
+        if (!tooClose) {
+            placed.push({ x, y });
+            l2.ships.push({ x, y, hit: false });
+        }
+    }
+
+    // Reconstruir torpedo slots
+    const torpWrap = document.getElementById('torp-slots');
+    if (torpWrap) {
+        torpWrap.innerHTML = '';
+        for (let i = 0; i < 7; i++) {
+            const slot = document.createElement('div');
+            slot.id = `torp-${i}`;
+            slot.className = 'torp-slot torp-ready font-retro';
+            slot.textContent = 'T';
+            torpWrap.appendChild(slot);
+        }
+    }
+
+    // Construir la cuadrícula unificada
+    buildRadarGrid();
+    // Pintar los blips sobre las celdas exactas
+    renderRadar();
+    // Sincronizar sweep overlay con el tamaño de la cuadrícula
+    syncSweepOverlay();
+    updateL2UI();
+
+    print('SONAR ACTIVADO — 3 contactos detectados en la cuadrícula.', 'info');
+    print('Haz clic sobre una señal ⬤ roja en el radar para apuntar.', 'sys');
+    print('Tienes 7 torpedos — necesitas 3 impactos directos.', 'warn');
+
+    document.getElementById('target-count').textContent = l2.hitsNeeded;
+    document.getElementById('ship-info').innerHTML = `<span style="color:#4a6a4a;">⚠ ${l2.ships.length} CONTACTOS EN EL ÁREA</span><br><span style="color:#1a4a1a; font-size:10px;">Haz clic sobre las señales rojas del radar</span>`;
+}
+
+function syncSweepOverlay() {
+    // Ajustar el overlay del sweep para que coincida con el tamaño real del grid
+    const gridWrap = document.getElementById('radar-grid-wrap');
+    const overlay  = document.getElementById('radar-sweep-overlay');
+    if (!gridWrap || !overlay) return;
+    const rect = gridWrap.getBoundingClientRect();
+    overlay.style.width  = gridWrap.offsetWidth  + 'px';
+    overlay.style.height = gridWrap.offsetHeight + 'px';
+    // Posicionar el overlay encima del gridWrap con position absolute del padre
+    overlay.style.top  = '0';
+    overlay.style.left = '0';
+}
+
+function updateL2UI() {
+    // Torpedo slots — update all 7
+    for (let i = 0; i < 7; i++) {
+        const slot = document.getElementById(`torp-${i}`);
+        if (!slot) continue;
+        if (i < l2.torpedosLeft) {
+            slot.className = 'torp-slot torp-ready font-retro';
+            slot.textContent = 'T';
+        } else {
+            slot.className = 'torp-slot torp-fired font-retro';
+            slot.textContent = '×';
+        }
+    }
+    document.getElementById('hits-count').textContent = l2.hits;
+    document.getElementById('shots-count').textContent = 7 - l2.torpedosLeft;
+    document.getElementById('fire-btn').disabled = l2.torpedosLeft <= 0 || !l2.active;
+}
+
+function fireTorpedo() {
+    if (!l2.active || l2.torpedosLeft <= 0) return;
+
+    const xRaw = document.getElementById('coord-x').value;
+    const yRaw = document.getElementById('coord-y').value;
+    const x = parseInt(xRaw);
+    const y = parseInt(yRaw);
+
+    if (isNaN(x) || isNaN(y) || x < 0 || x > 9 || y < 0 || y > 9) {
+        toast('⚠ Coordenadas inválidas (0-9)');
+        print('ERROR: Coordenadas fuera de rango.', 'warn');
+        return;
+    }
+
+    // Check duplicate shot
+    const alreadyShot = l2.shots.find(s => s.x === x && s.y === y);
+    if (alreadyShot) {
+        toast('⚠ Ya disparaste en esa posición');
+        print('AVISO: Coordenadas ya utilizadas.', 'warn');
+        return;
+    }
+
+    l2.torpedosLeft--;
+    const hit = l2.ships.find(s => s.x === x && s.y === y && !s.hit);
+    const isHit = !!hit;
+
+    l2.shots.push({ x, y, hit: isHit });
+    if (hit) {
+        hit.hit = true;
+        l2.hits++;
+    }
+
+    // Update radar grid
+    markShotCell(x, y, isHit);
+    updateL2Blips();
+    updateL2UI();
+
+    const resultEl = document.getElementById('shot-result');
+    if (isHit) {
+        resultEl.style.color = '#22c55e';
+        resultEl.textContent = `✓ IMPACTO en (${x},${y}) — Objetivo neutralizado.`;
+        print(`IMPACTO CONFIRMADO en (${x},${y}). Barco hundido.`, 'info');
+        toast('🎯 ¡IMPACTO!');
+    } else {
+        resultEl.style.color = '#ef4444';
+        resultEl.textContent = `✗ FALLO en (${x},${y}) — Sin contacto.`;
+        print(`Torpedo (${x},${y}) — FALLO. Sin contacto.`, 'err');
+        toast('Miss — sin contacto');
+    }
+
+    // Show proximity hint for nearest undetected ship
+    if (!isHit) {
+        const unHit = l2.ships.filter(s => !s.hit);
+        if (unHit.length > 0) {
+            const distances = unHit.map(s => Math.abs(s.x - x) + Math.abs(s.y - y));
+            const minDist = Math.min(...distances);
+            let hint = '';
+            if (minDist <= 1) hint = '¡MUY CERCA! Contacto a 1 cuadro.';
+            else if (minDist <= 3) hint = `Cerca — contacto a ~${minDist} cuadros.`;
+            else hint = `Lejos — contacto a ${minDist} cuadros.`;
+            setTimeout(() => {
+                print(`Análisis sonar: ${hint}`, 'warn');
+                toast('📡 ' + hint);
+            }, 600);
+        }
+    }
+
+    checkL2Game();
+}
+
+function checkL2Game() {
+    if (l2.hits >= l2.hitsNeeded) {
+        l2.active = false;
+        print('✓ TODOS LOS OBJETIVOS NEUTRALIZADOS. Ruta libre.', 'info');
+        setTimeout(() => transitionToLevel(3), 800);
+        return;
+    }
+    if (l2.torpedosLeft <= 0) {
+        l2.active = false;
+        state.lives--;
+        updateFuses();
+        if (state.lives <= 0) {
+            showOverlay('MUNICIÓN AGOTADA', 'Sin torpedos y sin éxito. El Peral se rinde.', '#ef4444');
+        } else {
+            print('Sin torpedos — Reiniciando sistema de puntería...', 'err');
+            toast('⛔ Sin munición — reiniciando');
+            setTimeout(initLevel2, 1500);
+        }
+    }
+}
+
+// ============================================================
+//  LEVEL 3 — 3D SUBMARINE INTERIOR (Three.js)
+// ============================================================
+let l3 = {
+    active: false,
+    timeLeft: 120,       // 10 min in seconds
+    breachesFixed: 0,
+    totalBreaches: 5,
+    timerInterval: null,
+    animFrame: null,
+    nearBreachIdx: -1
+};
+
+// Three.js objects (module-level so cleanup works)
+let l3three = {};
+
+// Breach definitions — positions slightly INSIDE the corridor so cracks are not buried in wall mesh
+// Walls at X=±2.05, ceiling Y=1.52. Offset inward by 0.15 so the crack face is visible.
+const BREACH_DEFS = [
+    { pos: [-1.90, 0.20,  -8],  side: 'left'  },
+    { pos: [ 1.90, 0.40,  -18], side: 'right' },
+    { pos: [-1.90,-0.20,  -28], side: 'left'  },
+    { pos: [ 1.90, 0.50,  -38], side: 'right' },
+    { pos: [ 0.0,  1.36,  -46], side: 'top'   },
+];
+
+function initLevel3() {
+    l3.active        = true;
+    l3.timeLeft      = 120;
+    l3.breachesFixed = 0;
+    l3.nearBreachIdx = -1;
+    clearInterval(l3.timerInterval);
+    cancelAnimationFrame(l3.animFrame);
+    updateL3BreachList();
+
+    const canvas = document.getElementById('l3-canvas');
+    const wrap   = document.getElementById('l3-canvas-wrap');
+    const W = wrap.clientWidth  || 800;
+    const H = wrap.clientHeight || 420;
+
+    if (l3three.renderer) { l3three.renderer.dispose(); }
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setClearColor(0x020c10);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x020c10, 0.055);
+
+    const camera = new THREE.PerspectiveCamera(72, W / H, 0.05, 80);
+    camera.position.set(0, 0.1, -1);
+    camera.rotation.order = 'YXZ';
+
+    // ── HELPERS ──────────────────────────────────────────────
+    function mat(color, emissive=0x000000, emissiveI=0) {
+        return new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: emissiveI });
+    }
+    function box(w,h,d, m) {
+        return new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m);
+    }
+
+    // ── LIGHTING ─────────────────────────────────────────────
+    // Stronger ambient so the corridor is visible
+    scene.add(new THREE.AmbientLight(0x4a6070, 1.4));
+
+    // Player lantern - bright warm cone
+    const lantern = new THREE.PointLight(0xd0c090, 2.2, 12);
+    scene.add(lantern);
+
+    // Ceiling emergency lights — red-amber along corridor, stronger & more frequent
+    const ceilColors = [0xff3300, 0xff6600, 0xff3300, 0xff6600, 0xff3300, 0xff6600, 0xff3300, 0xff6600];
+    const ceilLights = [];
+    for (let i = 0; i < 8; i++) {
+        const cl = new THREE.PointLight(ceilColors[i], 2.2, 14);
+        cl.position.set(0, 1.5, -3 - i * 7);
+        scene.add(cl);
+        ceilLights.push(cl);
+    }
+    // Extra fill lights between ceiling lights to avoid dark patches
+    for (let i = 0; i < 7; i++) {
+        const fill = new THREE.PointLight(0x203050, 1.0, 10);
+        fill.position.set(0, 0.0, -7 - i * 7);
+        scene.add(fill);
+    }
+
+    // ── CORRIDOR HULL ────────────────────────────────────────
+    // Oval cross-section built from boxes:
+    // Two curved walls (left/right), ceiling arc, floor flat
+
+    const HULL_LEN = 58;
+    const HULL_MID = -HULL_LEN / 2;
+
+    // Main hull shell — oval approximation with layered boxes
+    const hullDark  = mat(0x1c2a22);
+    const hullMid   = mat(0x243228);
+    const hullRivet = mat(0x2e3e32);
+    const steelDark = mat(0x1a2018);
+    const steelRust = mat(0x3a2810);
+    const copperM   = mat(0x7a4e20);
+
+    // Left wall
+    const wallL = box(0.22, 2.8, HULL_LEN + 4, hullDark);
+    wallL.position.set(-2.05, 0.1, HULL_MID - 2); scene.add(wallL);
+    // Right wall
+    const wallR = box(0.22, 2.8, HULL_LEN + 4, hullDark);
+    wallR.position.set( 2.05, 0.1, HULL_MID - 2); scene.add(wallR);
+    // Ceiling flat centre
+    const ceil = box(4.3, 0.22, HULL_LEN + 4, hullMid);
+    ceil.position.set(0, 1.52, HULL_MID - 2); scene.add(ceil);
+    // Ceiling arc sides (angled panels)
+    for (const sx of [-1, 1]) {
+        const arc = box(0.8, 0.22, HULL_LEN, hullDark);
+        arc.rotation.z = sx * 0.42;
+        arc.position.set(sx * 2.22, 1.26, HULL_MID); scene.add(arc);
+    }
+    // Floor
+    const floor = box(4.1, 0.18, HULL_LEN + 4, mat(0x2a2010));
+    floor.position.set(0, -1.42, HULL_MID - 2); scene.add(floor);
+    // Floor grating lines (thin boxes)
+    for (let z = -1; z > -(HULL_LEN); z -= 1.2) {
+        const g = box(4.0, 0.04, 0.06, mat(0x1a1808));
+        g.position.set(0, -1.33, z); scene.add(g);
+    }
+
+    // ── BOW (PROA) — front dome seen from INSIDE, needs BackSide ──
+    // Player walks toward -Z, so bow is at far -Z end
+    const bowGeo = new THREE.SphereGeometry(2.4, 16, 12);
+    const bowMesh = new THREE.Mesh(bowGeo, new THREE.MeshLambertMaterial({
+        color: 0x1e3028, emissive: 0x0a1a10, emissiveIntensity: 0.3,
+        side: THREE.BackSide  // BackSide = visible from inside the sphere
+    }));
+    bowMesh.position.set(0, 0.1, -(HULL_LEN - 2));
+    scene.add(bowMesh);
+    // Bow reinforcement ring visible from inside
+    const bowRingGeo = new THREE.TorusGeometry(2.1, 0.13, 8, 24);
+    const bowRing = new THREE.Mesh(bowRingGeo, mat(0x4a3820));
+    bowRing.position.set(0, 0.1, -(HULL_LEN - 2));
+    scene.add(bowRing);
+    // Bow torpedo tube (cylinder pointing forward)
+    const torpGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.6, 12);
+    const torpMesh = new THREE.Mesh(torpGeo, mat(0x2a1e10));
+    torpMesh.rotation.x = Math.PI / 2;
+    torpMesh.position.set(0, 0.0, -(HULL_LEN - 2.3));
+    scene.add(torpMesh);
+    // Bow light so player can see it from afar
+    const bowLight = new THREE.PointLight(0x305050, 2.0, 12);
+    bowLight.position.set(0, 0.5, -(HULL_LEN - 5));
+    scene.add(bowLight);
+
+    // ── STERN (POPA) — flat bulkhead behind player start ──
+    // Camera starts at Z=1, so stern must be at Z > 1 (behind the player)
+    // We place it at Z=3 so it's clearly behind, and make it big enough to cover the opening
+    const sternMat = new THREE.MeshLambertMaterial({ color: 0x161e1a, emissive: 0x050e09, emissiveIntensity: 0.4 });
+    const sternGeo = new THREE.BoxGeometry(6.0, 4.5, 0.5);
+    const stern = new THREE.Mesh(sternGeo, sternMat);
+    stern.position.set(0, 0.1, 1.5); scene.add(stern);
+    // Stern: round entry hatch
+    const hatchGeo = new THREE.CylinderGeometry(0.82, 0.82, 0.45, 18);
+    const hatch = new THREE.Mesh(hatchGeo, mat(0x3a2810));
+    hatch.rotation.x = Math.PI / 2;
+    hatch.position.set(0, 0.1, 1.28); scene.add(hatch);
+    // Hatch ring (copper)
+    const hatchRingGeo = new THREE.TorusGeometry(0.82, 0.11, 8, 20);
+    const hatchRing = new THREE.Mesh(hatchRingGeo, copperM);
+    hatchRing.rotation.x = Math.PI / 2;
+    hatchRing.position.set(0, 0.1, 1.1); scene.add(hatchRing);
+    // Stern warm light so player can see start zone
+    const sternLight = new THREE.PointLight(0x506870, 1.0, 8);
+    sternLight.position.set(0, 0.8, 1.8);
+    scene.add(sternLight);
+
+    // ── STRUCTURAL RIBS (every 4 units) ──────────────────────
+    for (let z = -2; z > -(HULL_LEN - 2); z -= 4) {
+        // Side rib beams
+        for (const sx of [-1, 1]) {
+            const rib = box(0.14, 2.9, 0.14, mat(0x3a2e18));
+            rib.position.set(sx * 1.92, 0.1, z); scene.add(rib);
+        }
+        // Top rib beam
+        const ribT = box(3.7, 0.14, 0.14, mat(0x3a2e18));
+        ribT.position.set(0, 1.47, z); scene.add(ribT);
+        // Diagonal braces
+        for (const sx of [-1, 1]) {
+            const brace = box(0.08, 1.1, 0.08, mat(0x2e2414));
+            brace.rotation.z = sx * 0.45;
+            brace.position.set(sx * 1.5, 0.9, z); scene.add(brace);
+        }
+    }
+
+    // ── PIPES ────────────────────────────────────────────────
+    // Main pipes along left wall (3 heights)
+    const pipeDefs = [
+        { y: 0.9,  r: 0.09, color: 0x5a3a18 },
+        { y: 0.55, r: 0.06, color: 0x6a3010 },
+        { y: 0.2,  r: 0.11, color: 0x4a3820 },
+    ];
+    pipeDefs.forEach(pd => {
+        const pg = new THREE.CylinderGeometry(pd.r, pd.r, HULL_LEN, 7);
+        const pm = new THREE.Mesh(pg, mat(pd.color));
+        pm.rotation.x = Math.PI/2;
+        pm.position.set(-1.88, pd.y, HULL_MID); scene.add(pm);
+    });
+    // Right wall single thick pipe
+    const pg2 = new THREE.CylinderGeometry(0.13, 0.13, HULL_LEN, 7);
+    const pm2 = new THREE.Mesh(pg2, mat(0x4a2c10));
+    pm2.rotation.x = Math.PI/2;
+    pm2.position.set(1.88, 0.6, HULL_MID); scene.add(pm2);
+
+    // Pipe joints (rings every 6 units)
+    for (let z = -3; z > -(HULL_LEN); z -= 6) {
+        const jg = new THREE.TorusGeometry(0.09, 0.04, 6, 10);
+        const jm = new THREE.Mesh(jg, copperM);
+        jm.rotation.x = Math.PI/2;
+        jm.position.set(-1.88, 0.9, z); scene.add(jm);
+    }
+
+    // ── VALVE WHEELS (decoration) ────────────────────────────
+    const valvePositions = [-6, -20, -38];
+    valvePositions.forEach(z => {
+        const spoke = new THREE.Mesh(
+            new THREE.TorusGeometry(0.28, 0.035, 6, 14), copperM
+        );
+        spoke.rotation.y = Math.PI/2;
+        spoke.position.set(-2.0, 1.1, z); scene.add(spoke);
+        // Centre hub
+        const hub = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.07, 0.07, 0.1, 8), mat(0x8a5020)
+        );
+        hub.rotation.z = Math.PI/2;
+        hub.position.set(-2.02, 1.1, z); scene.add(hub);
+        // 4 spokes
+        for (let a = 0; a < 4; a++) {
+            const sp = box(0.03, 0.52, 0.03, mat(0x6a3a10));
+            sp.rotation.z = Math.PI/2;
+            sp.rotation.x = a * Math.PI/4;
+            sp.position.set(-2.02, 1.1, z); scene.add(sp);
+        }
+    });
+
+    // ── CONTROL PANEL on right wall (near start) ─────────────
+    const panel = box(0.08, 0.7, 1.2, mat(0x1a2820));
+    panel.position.set(2.0, 0.6, -2.5); scene.add(panel);
+    // Dials
+    [[0,-0.25,-2.2],[0,-0.25,-2.7],[0,-0.25,-3.0]].forEach(([x,y,z]) => {
+        const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,0.06,10), mat(0x223322));
+        dial.rotation.z = Math.PI/2;
+        dial.position.set(2.05, 0.65+y*0.3, z); scene.add(dial);
+    });
+
+    // ── OVERHEAD LAMPS (physical bulb mesh) ──────────────────
+    for (let z = -4; z > -(HULL_LEN); z -= 9) {
+        const bulbGeo = new THREE.SphereGeometry(0.12, 7, 5);
+        const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffaa44 });
+        const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+        bulb.position.set(0, 1.43, z); scene.add(bulb);
+        // Wire
+        const wireGeo = new THREE.CylinderGeometry(0.01, 0.01, 0.18, 4);
+        const wire = new THREE.Mesh(wireGeo, mat(0x111111));
+        wire.position.set(0, 1.58, z); scene.add(wire);
+    }
+
+    // ── WATER ON FLOOR (rising plane) ────────────────────────
+    const waterGeo = new THREE.PlaneGeometry(4.0, HULL_LEN);
+    const waterMat = new THREE.MeshBasicMaterial({
+        color: 0x0044aa, transparent: true, opacity: 0.38, side: THREE.DoubleSide
+    });
+    const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+    waterMesh.rotation.x = -Math.PI/2;
+    waterMesh.position.set(0, -1.41, HULL_MID);
+    scene.add(waterMesh);
+
+    // ── BREACHES ─────────────────────────────────────────────
+    const breachMeshes = [];
+    const breachGlow   = [];
+    const breachParticles = [];
+
+    BREACH_DEFS.forEach((bd, i) => {
+        const grp = new THREE.Group();
+        grp.position.set(...bd.pos);
+
+        // ── CRACK GEOMETRY ──
+        // The crack lives in the group's LOCAL XY plane (Z=0 locally).
+        // After applying the group rotation below, that local XY plane
+        // will be aligned flush with the wall surface.
+
+        const crackMat = new THREE.MeshBasicMaterial({
+            color: 0x55ccff, transparent: true, opacity: 1.0,
+            side: THREE.DoubleSide, depthWrite: false
+        });
+
+        // Jagged crack: series of connected quads
+        const crackPts = [
+            new THREE.Vector3(-0.06, -0.70, 0),
+            new THREE.Vector3( 0.18, -0.28, 0),
+            new THREE.Vector3(-0.11,  0.04, 0),
+            new THREE.Vector3( 0.20,  0.40, 0),
+            new THREE.Vector3(-0.05,  0.72, 0),
+        ];
+        const hw = 0.08;
+        for (let ci = 0; ci < crackPts.length - 1; ci++) {
+            const a = crackPts[ci], b = crackPts[ci + 1];
+            const geo = new THREE.BufferGeometry();
+            const verts = new Float32Array([
+                a.x - hw, a.y, 0.02,   a.x + hw, a.y, 0.02,   b.x - hw, b.y, 0.02,
+                a.x + hw, a.y, 0.02,   b.x + hw, b.y, 0.02,   b.x - hw, b.y, 0.02,
+            ]);
+            geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+            const m = crackMat.clone();
+            grp.add(new THREE.Mesh(geo, m));
+        }
+        // Branch crack
+        const bGeo = new THREE.BufferGeometry();
+        const bVerts = new Float32Array([
+            0.18,-0.28,0.02,  0.52,-0.10,0.02,  0.18,-0.14,0.02,
+            0.18,-0.28,0.02,  0.54,-0.18,0.02,  0.52,-0.10,0.02,
+        ]);
+        bGeo.setAttribute('position', new THREE.BufferAttribute(bVerts, 3));
+        grp.add(new THREE.Mesh(bGeo, new THREE.MeshBasicMaterial({ color: 0x99eeff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false })));
+
+        // Dark rust halo so crack stands out against the wall
+        const haloGeo = new THREE.PlaneGeometry(0.65, 1.6);
+        grp.add(new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ color: 0x100400, transparent: true, opacity: 0.80, side: THREE.DoubleSide, depthWrite: false })));
+
+        // Bright emissive warning border (orange rectangle around crack)
+        const warnGeo = new THREE.PlaneGeometry(0.70, 1.65);
+        grp.add(new THREE.Mesh(warnGeo, new THREE.MeshBasicMaterial({ color: 0x884400, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false })));
+
+        // ── ROTATION: align group so its local XY-plane = wall surface ──
+        // left wall  (at X≈-1.90): face must point toward +X (into corridor)
+        //   → rotate Y by +90° so local +Z points toward +X
+        if (bd.side === 'left')  grp.rotation.y =  Math.PI / 2;
+        // right wall (at X≈+1.90): face must point toward -X (into corridor)
+        //   → rotate Y by -90° so local +Z points toward -X
+        if (bd.side === 'right') grp.rotation.y = -Math.PI / 2;
+        // ceiling    (at Y≈+1.36): face must point downward (-Y)
+        //   → rotate X by +90° so local +Z points downward
+        if (bd.side === 'top')   grp.rotation.x =  Math.PI / 2;
+
+        grp.userData = { breachIdx: i, fixed: false };
+        scene.add(grp);
+        breachMeshes.push(grp);
+
+        // ── WATER JET PARTICLES ──
+        const jets = [];
+        for (let j = 0; j < 12; j++) {
+            const jg = new THREE.SphereGeometry(0.032, 4, 3);
+            const jm = new THREE.MeshBasicMaterial({ color: 0xaaddff, transparent: true, opacity: 0.85 });
+            const jet = new THREE.Mesh(jg, jm);
+            // Start at breach position with tiny random spread
+            jet.userData = {
+                vy: -(0.022 + Math.random() * 0.025),
+                ox: (Math.random() - 0.5) * 0.22,
+                oz: (Math.random() - 0.5) * 0.22,
+            };
+            jet.position.set(bd.pos[0] + jet.userData.ox, bd.pos[1] + Math.random() * 0.3, bd.pos[2] + jet.userData.oz);
+            scene.add(jet);
+            jets.push(jet);
+        }
+        breachParticles.push(jets);
+
+        // ── GLOW LIGHT — very bright blue point ──
+        const glow = new THREE.PointLight(0x33aaff, 5.0, 5.0);
+        glow.position.set(...bd.pos);
+        scene.add(glow);
+        breachGlow.push(glow);
+    });
+
+    l3three = { renderer, scene, camera, lantern, breachMeshes, breachGlow, breachParticles, waterMesh, ceilLights };
+
+    // ── INPUT ───────────────────────────────────────────────
+    const keys = {};
+    function onKeyD(e) { keys[e.code] = true;  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault(); }
+    function onKeyU(e) { keys[e.code] = false; }
+    document.addEventListener('keydown', onKeyD);
+    document.addEventListener('keyup',   onKeyU);
+    l3three.removeKeys = () => {
+        document.removeEventListener('keydown', onKeyD);
+        document.removeEventListener('keyup',   onKeyU);
+    };
+
+    let mouseDown = false, lastMX = 0;
+    canvas.addEventListener('mousedown', e => { mouseDown = true; lastMX = e.clientX; canvas.style.cursor='grabbing'; });
+    canvas.addEventListener('mousemove', e => {
+        if (!mouseDown) return;
+        camera.rotation.y -= (e.clientX - lastMX) * 0.003;
+        lastMX = e.clientX;
+    });
+    canvas.addEventListener('mouseup',   () => { mouseDown = false; canvas.style.cursor='crosshair'; });
+    canvas.addEventListener('click',     () => repairNearby());
+    document.addEventListener('keydown', e => { if (e.code === 'KeyE' && currentLevel === 3) repairNearby(); });
+
+    // ── TIMER ───────────────────────────────────────────────
+    l3.timerInterval = setInterval(() => {
+        if (!l3.active) return;
+        l3.timeLeft--;
+        updateL3Timer();
+        const pct = ((120 - l3.timeLeft) / 120) * 88;
+        document.getElementById('l3-water').style.height = pct + '%';
+        if (l3.timeLeft <= 20)  document.getElementById('l3-alarm').style.display = 'block';
+        if (l3.timeLeft <= 0)   endLevel3(false);
+    }, 1000);
+
+    // ── RENDER LOOP ─────────────────────────────────────────
+    let t = 0;
+    function animate() {
+        l3.animFrame = requestAnimationFrame(animate);
+        t += 0.016;
+
+        if (l3.active) {
+            // Movement
+            const speed = 0.07;
+            const dir = new THREE.Vector3();
+            camera.getWorldDirection(dir);
+            dir.y = 0; dir.normalize();
+
+            if (keys['KeyW'] || keys['ArrowUp'])    camera.position.addScaledVector(dir,  speed);
+            if (keys['KeyS'] || keys['ArrowDown'])  camera.position.addScaledVector(dir, -speed);
+            if (keys['KeyA'] || keys['ArrowLeft'])  camera.rotation.y += 0.028;
+            if (keys['KeyD'] || keys['ArrowRight']) camera.rotation.y -= 0.028;
+
+            // Clamp
+            camera.position.x = Math.max(-1.6, Math.min(1.6, camera.position.x));
+            camera.position.y = Math.max(-1.2, Math.min(1.3, camera.position.y));
+            camera.position.z = Math.max(-(HULL_LEN - 2), Math.min(2.5, camera.position.z));
+
+            // Lantern follows
+            lantern.position.copy(camera.position);
+
+            // Ceiling lights flicker on alarm
+            if (l3.timeLeft <= 20) {
+                ceilLights.forEach((cl, ci) => {
+                    cl.intensity = 0.5 + Math.abs(Math.sin(t * 8 + ci * 1.3)) * 1.2;
+                });
+            }
+
+            // Water surface ripple
+            const wt = l3three.waterMesh;
+            if (wt) {
+                const baseY = -1.41 + ((120 - l3.timeLeft) / 120) * 1.8;
+                wt.position.y = baseY + Math.sin(t * 2.5) * 0.008;
+                wt.material.opacity = 0.2 + ((120 - l3.timeLeft) / 120) * 0.35;
+            }
+
+            // Breach: glow pulse + water jets + proximity
+            let nearestDist = 99, nearestIdx = -1;
+            l3three.breachMeshes.forEach((grp, i) => {
+                if (grp.userData.fixed) return;
+                const d = camera.position.distanceTo(grp.position);
+                if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+
+                // Glow flicker
+                l3three.breachGlow[i].intensity = 3.5 + Math.sin(t * 6 + i * 2.1) * 1.2;
+
+                // Jet particles fall & reset
+                const bd = BREACH_DEFS[i];
+                l3three.breachParticles[i].forEach(jet => {
+                    jet.position.y += jet.userData.vy;
+                    if (jet.position.y < -1.35) {
+                        // reset to crack origin
+                        jet.position.set(bd.pos[0], bd.pos[1], bd.pos[2]);
+                        jet.position.x += jet.userData.ox;
+                        jet.position.z += jet.userData.oz;
+                        jet.position.y += 0.2 + Math.random() * 0.3;
+                        jet.material.opacity = 0.8;
+                    } else {
+                        jet.material.opacity = Math.max(0, 0.8 - (bd.pos[1] - jet.position.y) * 0.35);
+                    }
+                });
+            });
+
+            // Prompt — increased detection radius to 3.5 units
+            const prompt = document.getElementById('l3-prompt');
+            if (nearestDist < 3.5 && nearestIdx !== -1) {
+                l3.nearBreachIdx = nearestIdx;
+                prompt.style.opacity = '1';
+                prompt.textContent = `⚠ BRECHA ${nearestIdx + 1} — Pulsa E o CLIC para sellar`;
+            } else {
+                l3.nearBreachIdx = -1;
+                prompt.style.opacity = '0';
+            }
+
+            // Fog deepens as water rises
+            const waterPct = (120 - l3.timeLeft) / 120;
+            renderer.setClearColor(new THREE.Color(0.008, 0.025 + waterPct*0.04, 0.06 + waterPct*0.1));
+        }
+
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    print('¡BRECHA DE CASCO! 5 puntos críticos detectados.', 'err');
+    print('W/S avanzar · A/D girar · E o CLIC para reparar.', 'sys');
+    updateL3BreachList();
+    updateL3Timer();
+}
+
+function repairNearby() {
+    if (!l3.active || l3.nearBreachIdx === -1) return;
+    const idx = l3.nearBreachIdx;
+    const grp = l3three.breachMeshes[idx];
+    if (grp.userData.fixed) return;
+
+    grp.userData.fixed = true;
+
+    // Change all child mesh materials to sealed green
+    grp.children.forEach(child => {
+        if (child.material) {
+            child.material.color.setHex(0x22c55e);
+            child.material.opacity = 0.5;
+        }
+    });
+
+    // Kill the glow
+    l3three.breachGlow[idx].color.setHex(0x22c55e);
+    l3three.breachGlow[idx].intensity = 0.8;
+
+    // Stop water jets
+    l3three.breachParticles[idx].forEach(jet => {
+        jet.material.opacity = 0;
+        jet.visible = false;
+    });
+
+    l3.breachesFixed++;
+    l3.nearBreachIdx = -1;
+    document.getElementById('l3-prompt').style.opacity = '0';
+    document.getElementById('l3-b-count').textContent = l3.totalBreaches - l3.breachesFixed;
+
+    print(`✓ Brecha ${idx + 1} REPARADA. Quedan ${l3.totalBreaches - l3.breachesFixed}.`, 'info');
+    toast(`🔧 Brecha ${idx + 1} sellada`);
+    updateL3BreachList();
+
+    if (l3.breachesFixed >= l3.totalBreaches) {
+        endLevel3(true);
+    }
+}
+
+function updateL3Timer() {
+    const m = Math.floor(l3.timeLeft / 60).toString().padStart(2, '0');
+    const s = (l3.timeLeft % 60).toString().padStart(2, '0');
+    const el = document.getElementById('l3-timer');
+    el.textContent = `${m}:${s}`;
+    el.className = l3.timeLeft <= 60 ? 'font-retro' : 'font-retro safe';
+    el.style.color = l3.timeLeft <= 60 ? '#ef4444' : '#22c55e';
+    el.style.textShadow = l3.timeLeft <= 60 ? '0 0 10px #ef4444' : '0 0 10px #22c55e';
+}
+
+function updateL3BreachList() {
+    let list = document.getElementById('l3-breach-list');
+    if (!list) return;
+    list.innerHTML = '';
+    BREACH_DEFS.forEach((bd, i) => {
+        const fixed = l3three.breachMeshes && l3three.breachMeshes[i] && l3three.breachMeshes[i].userData.fixed;
+        const item = document.createElement('div');
+        item.className = `breach-item ${fixed ? 'fixed' : 'active'}`;
+        item.innerHTML = `<div class="breach-dot" style="background:${fixed ? '#22c55e' : '#ef4444'}"></div>
+            BRECHA ${i + 1} — ${bd.side.toUpperCase()} ${fixed ? '✓ SELLADA' : '⚠ ACTIVA'}`;
+        list.appendChild(item);
+    });
+}
+
+function endLevel3(win) {
+    l3.active = false;
+    clearInterval(l3.timerInterval);
+    document.getElementById('l3-alarm').style.display = 'none';
+
+    if (win) {
+        print('✓ TODAS LAS BRECHAS SELLADAS. ¡Peral salva el submarino!', 'info');
+        setTimeout(() => transitionToLevel(4), 800);
+    } else {
+        state.lives--;
+        updateFuses();
+        if (state.lives <= 0) {
+            showOverlay('INUNDACIÓN TOTAL', 'El agua lo ha invadido todo. El Peral se hunde.', '#ef4444');
+        } else {
+            print('TIEMPO AGOTADO — Reiniciando protocolo de reparación...', 'err');
+            toast('💧 Inundado — reiniciando');
+            setTimeout(initLevel3, 1500);
+        }
+    }
+}
+
+
+// ============================================================
+//  LEVEL 4 — 3D SALA DE MÁQUINAS + CABLE PUZZLE
+// ============================================================
+let l4 = { active: false, solved: false, nearMonitor: false, animFrame: null };
+let l4three = {};
+
+const CABLE_COLORS = [
+    { hex: '#ef4444', three: 0xef4444 },   // rojo
+    { hex: '#f97316', three: 0xf97316 },   // naranja (similar al rojo en baja luz)
+    { hex: '#3b82f6', three: 0x3b82f6 },   // azul
+    { hex: '#06b6d4', three: 0x06b6d4 },   // cian (similar al azul)
+    { hex: '#22c55e', three: 0x22c55e },   // verde
+    { hex: '#eab308', three: 0xeab308 },   // amarillo
+    { hex: '#a855f7', three: 0xa855f7 },   // morado
+];
+
+let l4puzzle = {
+    open: false,
+    connections: {},   // leftIdx -> rightIdx
+    selected: null,    // leftIdx currently selected
+    solved: false,
+    shuffledRight: []  // right pins shuffled order
+};
+
+function initLevel4() {
+    l4.active = true; l4.solved = false; l4.nearMonitor = false;
+    cancelAnimationFrame(l4.animFrame);
+    if (l4three.renderer) l4three.renderer.dispose();
+    if (l4three.removeKeys) l4three.removeKeys();
+
+    const canvas = document.getElementById('l4-canvas');
+    const wrap   = document.getElementById('l4-canvas-wrap');
+    const W = wrap.offsetWidth > 10 ? wrap.offsetWidth : 700;
+    const H = 420;
+    canvas.width = W; canvas.height = H;
+    canvas.style.width = W+'px'; canvas.style.height = H+'px';
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(1);
+    renderer.setSize(W, H, false);
+    renderer.setClearColor(0x010a0e);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x010a0e, 0.048);
+
+    const camera = new THREE.PerspectiveCamera(72, W/H, 0.05, 80);
+    camera.position.set(0, 0.1, -1);
+    camera.rotation.order = 'YXZ';
+
+    function mat(color, emissive=0x000000, ei=0) {
+        return new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: ei });
+    }
+    function box(w,h,d,m) { return new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m); }
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0x3a5060, 1.6));
+    const lantern = new THREE.PointLight(0xd0c090, 2.2, 12);
+    scene.add(lantern);
+    const ceilColors4 = [0xff3300,0xff6600,0xff3300,0xff6600,0xff3300,0xff6600];
+    const ceilLights4 = [];
+    for (let i=0;i<6;i++){
+        const cl = new THREE.PointLight(ceilColors4[i],2.0,12);
+        cl.position.set(0,1.5,-3-i*7); scene.add(cl); ceilLights4.push(cl);
+    }
+
+    // Corridor (same style as L3)
+    const HULL_LEN=50, HULL_MID=-HULL_LEN/2;
+    const hullDark=mat(0x1e2e24,0x050e09,0.1), hullMid=mat(0x243228,0x071209,0.08);
+    const copperM=mat(0x7a4e20,0x2a1800,0.1), floorM=mat(0x2c2214,0x080600,0.05);
+
+    const wallL4 = box(0.22,2.8,HULL_LEN+4,hullDark); wallL4.position.set(-2.05,0.1,HULL_MID-2); scene.add(wallL4);
+    const wallR4 = box(0.22,2.8,HULL_LEN+4,hullDark); wallR4.position.set(2.05,0.1,HULL_MID-2); scene.add(wallR4);
+    const ceil4  = box(4.3,0.22,HULL_LEN+4,hullMid);  ceil4.position.set(0,1.52,HULL_MID-2); scene.add(ceil4);
+    const floor4 = box(4.1,0.18,HULL_LEN+4,floorM);   floor4.position.set(0,-1.42,HULL_MID-2); scene.add(floor4);
+    // Stern
+    const sternM4 = new THREE.MeshLambertMaterial({color:0x161e1a,emissive:0x050e09,emissiveIntensity:0.3});
+    const stern4 = new THREE.Mesh(new THREE.BoxGeometry(6,4.5,0.5),sternM4);
+    stern4.position.set(0,0.1,1.5); scene.add(stern4);
+    // Bow
+    const bowGeo4 = new THREE.SphereGeometry(2.4,16,12);
+    const bowM4 = new THREE.MeshLambertMaterial({color:0x1e3028,emissive:0x0a1a10,emissiveIntensity:0.3,side:THREE.BackSide});
+    const bow4 = new THREE.Mesh(bowGeo4,bowM4);
+    bow4.position.set(0,0.1,-(HULL_LEN-2)); scene.add(bow4);
+    // Ribs
+    for(let z=-2;z>-(HULL_LEN-2);z-=4){
+        for(const sx of[-1,1]){
+            const r=box(0.14,2.9,0.14,mat(0x3a2e18)); r.position.set(sx*1.92,0.1,z); scene.add(r);
+        }
+        const rt=box(3.7,0.14,0.14,mat(0x3a2e18)); rt.position.set(0,1.47,z); scene.add(rt);
+    }
+    // Pipes
+    const pg4=new THREE.CylinderGeometry(0.09,0.09,HULL_LEN,8);
+    const pm4=new THREE.Mesh(pg4,mat(0x5a3a18)); pm4.rotation.x=Math.PI/2; pm4.position.set(-1.88,0.9,HULL_MID); scene.add(pm4);
+
+    // ── PANEL ELÉCTRICO on the right wall at Z=-10 ──
+    const monitorZ = -10;
+    // Panel base (box protruding slightly into corridor)
+    const panelBase = box(0.18, 1.4, 2.2, mat(0x1a2820,0x040e08,0.08));
+    panelBase.position.set(1.98, 0.3, monitorZ); scene.add(panelBase);
+    // Screen face — PlaneGeometry facing -X (toward corridor center)
+    // rotation.y = Math.PI/2 makes the face point toward -X (left), so for RIGHT wall use +PI/2
+    const screenGeo = new THREE.PlaneGeometry(1.6, 1.0);
+    const screenMat = new THREE.MeshBasicMaterial({color:0x0a2a1a, side:THREE.DoubleSide});
+    const screen = new THREE.Mesh(screenGeo, screenMat);
+    screen.rotation.y = Math.PI/2;
+    screen.position.set(1.9, 0.4, monitorZ); scene.add(screen);
+    // Screen glow border
+    const borderGeo = new THREE.PlaneGeometry(1.7, 1.1);
+    const borderMat = new THREE.MeshBasicMaterial({color:0xeab308, transparent:true, opacity:0.18, side:THREE.DoubleSide});
+    const border = new THREE.Mesh(borderGeo, borderMat);
+    border.rotation.y = Math.PI/2;
+    border.position.set(1.89, 0.4, monitorZ); scene.add(border);
+    // ⚡ icon (yellow square)
+    const iconGeo = new THREE.PlaneGeometry(0.35, 0.35);
+    const iconMat = new THREE.MeshBasicMaterial({color:0xeab308, side:THREE.DoubleSide});
+    const icon = new THREE.Mesh(iconGeo, iconMat);
+    icon.rotation.y = Math.PI/2;
+    icon.position.set(1.88, 0.4, monitorZ); scene.add(icon);
+    // Monitor frame (box)
+    const frame = box(0.06, 1.3, 2.1, mat(0x3c3020,0x0a0800,0.06));
+    frame.position.set(1.95, 0.4, monitorZ); scene.add(frame);
+    // Cable connectors — 7 small colored boxes on the panel face
+    [-0.72, -0.48, -0.24, 0, 0.24, 0.48, 0.72].forEach((dz, ci) => {
+        const plug = box(0.06, 0.1, 0.1, mat(CABLE_COLORS[ci].three, CABLE_COLORS[ci].three, 0.4));
+        plug.position.set(1.88, 0.0, monitorZ + dz); scene.add(plug);
+    });
+    // Glow light — yellow/amber
+    const monGlow = new THREE.PointLight(0xeab308, 2.5, 6.0);
+    monGlow.position.set(1.4, 0.4, monitorZ); scene.add(monGlow);
+
+    l4three = { renderer, scene, camera, lantern, ceilLights4, monitorZ, monGlow };
+
+    // Input
+    const keys4={};
+    function kd4(e){keys4[e.code]=true; if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))e.preventDefault();}
+    function ku4(e){keys4[e.code]=false;}
+    document.addEventListener('keydown',kd4);
+    document.addEventListener('keyup',ku4);
+    l4three.removeKeys=()=>{document.removeEventListener('keydown',kd4);document.removeEventListener('keyup',ku4);};
+    canvas.addEventListener('click', ()=>{ if(l4.nearMonitor && !l4puzzle.solved) openL4Puzzle(); });
+    document.addEventListener('keydown', e=>{ if(e.code==='KeyE' && currentLevel===4 && l4.nearMonitor && !l4puzzle.solved) openL4Puzzle(); });
+
+    let t4=0;
+    function animate4(){
+        l4.animFrame=requestAnimationFrame(animate4);
+        t4+=0.016;
+        if(l4.active && !l4puzzle.open){
+            const speed=0.07, dir=new THREE.Vector3();
+            camera.getWorldDirection(dir); dir.y=0; dir.normalize();
+            if(keys4['KeyW']||keys4['ArrowUp'])    camera.position.addScaledVector(dir,speed);
+            if(keys4['KeyS']||keys4['ArrowDown'])  camera.position.addScaledVector(dir,-speed);
+            if(keys4['KeyA']||keys4['ArrowLeft'])  camera.rotation.y+=0.028;
+            if(keys4['KeyD']||keys4['ArrowRight']) camera.rotation.y-=0.028;
+            camera.position.x=Math.max(-1.6,Math.min(1.6,camera.position.x));
+            camera.position.y=Math.max(-1.2,Math.min(1.3,camera.position.y));
+            camera.position.z=Math.max(-(HULL_LEN-2),Math.min(2.5,camera.position.z));
+            lantern.position.copy(camera.position);
+            // Monitor proximity
+            const distMon = Math.abs(camera.position.z - l4three.monitorZ) + Math.abs(camera.position.x - 2.0);
+            const prompt4 = document.getElementById('l4-prompt');
+            if(distMon < 3.5){
+                l4.nearMonitor=true;
+                prompt4.style.opacity='1';
+                prompt4.textContent = l4puzzle.solved ? '✓ PANEL REPARADO' : '⚡ PANEL ELÉCTRICO — Pulsa E o CLIC para conectar cables';
+            } else {
+                l4.nearMonitor=false;
+                prompt4.style.opacity='0';
+            }
+            // Glow pulse
+            l4three.monGlow.intensity = l4puzzle.solved ? 1.5 : 1.5+Math.sin(t4*4)*0.8;
+            l4three.monGlow.color.setHex(l4puzzle.solved ? 0x22c55e : 0xeab308);
+        }
+        renderer.render(scene, camera);
+    }
+    animate4();
+
+    // Build the puzzle
+    buildL4Puzzle();
+    print('SALA DE MÁQUINAS — Panel eléctrico sin energía.','err');
+    print('Acércate al monitor amarillo y conecta los cables.','sys');
+}
+
+function buildL4Puzzle(){
+    l4puzzle.connections={};
+    l4puzzle.selected=null;
+    l4puzzle.solved=false;
+    // Shuffle right side
+    const indices=[0,1,2,3,4,5,6];
+    l4puzzle.shuffledRight=[...indices].sort(()=>Math.random()-0.5);
+
+    // Build left pins
+    const leftDiv=document.getElementById('l4-left-pins');
+    const rightDiv=document.getElementById('l4-right-pins');
+    if(!leftDiv||!rightDiv) return;
+    leftDiv.innerHTML=''; rightDiv.innerHTML='';
+
+    CABLE_COLORS.forEach((c,i)=>{
+        // Left pin
+        const lp=document.createElement('div');
+        lp.id=`l4-lpin-${i}`;
+        lp.style.cssText=`display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 8px;border:2px solid #333;background:#0a0a0a;transition:all 0.2s;border-radius:2px;`;
+        lp.innerHTML=`<div style="width:22px;height:22px;border-radius:50%;background:${c.hex};box-shadow:0 0 10px ${c.hex};flex-shrink:0;border:2px solid rgba(255,255,255,0.15);"></div>`;
+        lp.onclick=()=>selectLeftPin(i);
+        leftDiv.appendChild(lp);
+
+        // Right pin (shuffled)
+        const ri=l4puzzle.shuffledRight[i];
+        const rc=CABLE_COLORS[ri];
+        const rp=document.createElement('div');
+        rp.id=`l4-rpin-${i}`;
+        rp.dataset.colorIdx=ri;
+        rp.style.cssText=`display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 8px;border:2px solid #333;background:#0a0a0a;transition:all 0.2s;border-radius:2px;flex-direction:row-reverse;`;
+        rp.innerHTML=`<div style="width:22px;height:22px;border-radius:50%;background:${rc.hex};box-shadow:0 0 10px ${rc.hex};flex-shrink:0;border:2px solid rgba(255,255,255,0.15);"></div>`;
+        rp.onclick=()=>selectRightPin(i);
+        rightDiv.appendChild(rp);
+    });
+    drawL4Wires();
+}
+
+function selectLeftPin(i){
+    l4puzzle.selected=i;
+    // Highlight selected
+    CABLE_COLORS.forEach((_,idx)=>{
+        const lp=document.getElementById(`l4-lpin-${idx}`);
+        if(lp) lp.style.borderColor = idx===i ? CABLE_COLORS[i].hex : '#333';
+    });
+    print(`Cable seleccionado — haz clic en el terminal derecho.`,'warn');
+}
+
+function selectRightPin(rightSlot){
+    if(l4puzzle.selected===null){ print('Selecciona primero un cable de la izquierda.','warn'); return; }
+    const leftIdx=l4puzzle.selected;
+    const rightColorIdx=parseInt(document.getElementById(`l4-rpin-${rightSlot}`).dataset.colorIdx);
+    // Connect left color -> right slot
+    l4puzzle.connections[leftIdx]=rightSlot;
+    // Visual feedback
+    const lp=document.getElementById(`l4-lpin-${leftIdx}`);
+    const rp=document.getElementById(`l4-rpin-${rightSlot}`);
+    const isCorrect = rightColorIdx===leftIdx;
+    const borderCol = isCorrect ? '#22c55e' : '#ef4444';
+    if(lp) lp.style.borderColor=borderCol;
+    if(rp) rp.style.borderColor=borderCol;
+    l4puzzle.selected=null;
+    CABLE_COLORS.forEach((_,idx)=>{ const lp2=document.getElementById(`l4-lpin-${idx}`); if(lp2&&idx!==leftIdx) lp2.style.borderColor='#333'; });
+    drawL4Wires();
+    checkL4Puzzle();
+}
+
+function drawL4Wires(){
+    const cv=document.getElementById('l4-wire-canvas');
+    if(!cv) return;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,cv.width,cv.height);
+    const leftDiv=document.getElementById('l4-left-pins');
+    const rightDiv=document.getElementById('l4-right-pins');
+    if(!leftDiv||!rightDiv) return;
+    const boardRect=document.getElementById('l4-cable-board').getBoundingClientRect();
+
+    Object.entries(l4puzzle.connections).forEach(([li,ri])=>{
+        const leftIdx=parseInt(li);
+        const lpin=document.getElementById(`l4-lpin-${leftIdx}`);
+        const rpin=document.getElementById(`l4-rpin-${ri}`);
+        if(!lpin||!rpin) return;
+        const lr=lpin.getBoundingClientRect();
+        const rr=rpin.getBoundingClientRect();
+        const x1=lr.right-boardRect.left;
+        const y1=(lr.top+lr.height/2)-boardRect.top;
+        const x2=rr.left-boardRect.left;
+        const y2=(rr.top+rr.height/2)-boardRect.top;
+        const c=CABLE_COLORS[leftIdx];
+        ctx.beginPath();
+        ctx.moveTo(x1,y1);
+        ctx.bezierCurveTo(x1+80,y1, x2-80,y2, x2,y2);
+        ctx.strokeStyle=c.hex;
+        ctx.lineWidth=3;
+        ctx.shadowColor=c.hex;
+        ctx.shadowBlur=8;
+        ctx.stroke();
+        ctx.shadowBlur=0;
+    });
+}
+
+function checkL4Puzzle(){
+    let correct=0;
+    Object.entries(l4puzzle.connections).forEach(([li,ri])=>{
+        const rightColorIdx=parseInt(document.getElementById(`l4-rpin-${ri}`).dataset.colorIdx);
+        if(parseInt(li)===rightColorIdx) correct++;
+    });
+    document.getElementById('l4-status').textContent=`Conexiones correctas: ${correct}/${CABLE_COLORS.length}`;
+    if(correct===CABLE_COLORS.length){
+        l4puzzle.solved=true;
+        document.getElementById('l4-status').style.color='#22c55e';
+        document.getElementById('l4-status').textContent='✓ TODOS LOS CABLES CONECTADOS — Energía restaurada';
+        print('✓ PANEL ELÉCTRICO REPARADO. Sistemas en línea.','info');
+        toast('⚡ ¡Cables conectados!');
+        setTimeout(()=>{ closeL4Puzzle(); setTimeout(()=>transitionToLevel(5),600); },1800);
+    }
+}
+
+function openL4Puzzle(){
+    if(l4puzzle.solved) return;
+    l4puzzle.open=true;
+    const pz=document.getElementById('l4-puzzle');
+    pz.style.display='flex';
+    buildL4Puzzle();
+}
+
+function closeL4Puzzle(){
+    l4puzzle.open=false;
+    const pz=document.getElementById('l4-puzzle');
+    if(pz) pz.style.display='none';
+}
+
+// ============================================================
+//  LEVEL 5 — 3D PUESTO DE MANDO + PARKING MINI-GAME
+// ============================================================
+let l5={active:false,nearMonitor:false,gameOpen:false,animFrame:null};
+let l5three={};
+let l5game={
+    sub:{x:60,y:160,angle:0,vx:0,vy:0,va:0},
+    dock:{x:350,y:220,w:80,h:50,angle:0},
+    parked:false,
+    attempts:0,
+    keys:{}
+};
+
+function initLevel5(){
+    l5.active=true; l5.nearMonitor=false; l5.gameOpen=false;
+    cancelAnimationFrame(l5.animFrame);
+    if(l5three.renderer) l5three.renderer.dispose();
+    if(l5three.removeKeys) l5three.removeKeys();
+
+    const canvas=document.getElementById('l5-canvas');
+    const wrap=document.getElementById('l5-canvas-wrap');
+    const W=wrap.offsetWidth>10?wrap.offsetWidth:700, H=420;
+    canvas.width=W; canvas.height=H;
+    canvas.style.width=W+'px'; canvas.style.height=H+'px';
+
+    const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+    renderer.setPixelRatio(1); renderer.setSize(W,H,false); renderer.setClearColor(0x010a0e);
+
+    const scene=new THREE.Scene();
+    scene.fog=new THREE.FogExp2(0x010a0e,0.048);
+    const camera=new THREE.PerspectiveCamera(72,W/H,0.05,80);
+    camera.position.set(0,0.1,-1); camera.rotation.order='YXZ';
+
+    function mat(color,emissive=0x000000,ei=0){return new THREE.MeshLambertMaterial({color,emissive,emissiveIntensity:ei});}
+    function box(w,h,d,m){return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);}
+
+    scene.add(new THREE.AmbientLight(0x3a5060,1.6));
+    const lantern5=new THREE.PointLight(0xd0c090,2.2,12); scene.add(lantern5);
+    const ceilColors5=[0xff3300,0xff6600,0xff3300,0xff6600,0xff3300,0xff6600];
+    const ceilLights5=[];
+    for(let i=0;i<6;i++){const cl=new THREE.PointLight(ceilColors5[i],2.0,12);cl.position.set(0,1.5,-3-i*7);scene.add(cl);ceilLights5.push(cl);}
+
+    const HULL_LEN5=50, HULL_MID5=-HULL_LEN5/2;
+    const hullDark5=mat(0x1e2e24,0x050e09,0.1),hullMid5=mat(0x243228,0x071209,0.08),floorM5=mat(0x2c2214,0x080600,0.05);
+    const wallL5=box(0.22,2.8,HULL_LEN5+4,hullDark5); wallL5.position.set(-2.05,0.1,HULL_MID5-2); scene.add(wallL5);
+    const wallR5=box(0.22,2.8,HULL_LEN5+4,hullDark5); wallR5.position.set(2.05,0.1,HULL_MID5-2); scene.add(wallR5);
+    const ceil5=box(4.3,0.22,HULL_LEN5+4,hullMid5); ceil5.position.set(0,1.52,HULL_MID5-2); scene.add(ceil5);
+    const floor5=box(4.1,0.18,HULL_LEN5+4,floorM5); floor5.position.set(0,-1.42,HULL_MID5-2); scene.add(floor5);
+    const stern5=new THREE.Mesh(new THREE.BoxGeometry(6,4.5,0.5),new THREE.MeshLambertMaterial({color:0x161e1a,emissive:0x050e09,emissiveIntensity:0.3}));
+    stern5.position.set(0,0.1,1.5); scene.add(stern5);
+    const bow5=new THREE.Mesh(new THREE.SphereGeometry(2.4,16,12),new THREE.MeshLambertMaterial({color:0x1e3028,emissive:0x0a1a10,emissiveIntensity:0.3,side:THREE.BackSide}));
+    bow5.position.set(0,0.1,-(HULL_LEN5-2)); scene.add(bow5);
+    for(let z=-2;z>-(HULL_LEN5-2);z-=4){
+        for(const sx of[-1,1]){const r=box(0.14,2.9,0.14,mat(0x3a2e18));r.position.set(sx*1.92,0.1,z);scene.add(r);}
+        const rt=box(3.7,0.14,0.14,mat(0x3a2e18));rt.position.set(0,1.47,z);scene.add(rt);
+    }
+
+    // ── MONITOR DE NAVEGACIÓN on left wall at Z=-12 ──
+    const monZ5=-12;
+    // Panel base
+    const panelBase5=box(0.18,1.4,2.2,mat(0x1a2820,0x040e08,0.08));
+    panelBase5.position.set(-1.98,0.3,monZ5); scene.add(panelBase5);
+    // Big screen — rotation.y = -Math.PI/2 makes face point toward +X (right, into corridor)
+    const scr5=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.0),new THREE.MeshBasicMaterial({color:0x020c18,side:THREE.DoubleSide}));
+    scr5.rotation.y=-Math.PI/2; scr5.position.set(-1.9,0.4,monZ5); scene.add(scr5);
+    const scrBorder5=new THREE.Mesh(new THREE.PlaneGeometry(1.7,1.1),new THREE.MeshBasicMaterial({color:0x3b82f6,transparent:true,opacity:0.22,side:THREE.DoubleSide}));
+    scrBorder5.rotation.y=-Math.PI/2; scrBorder5.position.set(-1.89,0.4,monZ5); scene.add(scrBorder5);
+    // Mini sub icon on screen
+    const subIcon=new THREE.Mesh(new THREE.PlaneGeometry(0.28,0.14),new THREE.MeshBasicMaterial({color:0xd97706,side:THREE.DoubleSide}));
+    subIcon.rotation.y=-Math.PI/2; subIcon.position.set(-1.88,0.4,monZ5); scene.add(subIcon);
+    // Frame
+    const frame5=new THREE.Mesh(new THREE.BoxGeometry(0.06,1.3,2.1),mat(0x3c3020,0x0a0800,0.06));
+    frame5.position.set(-1.95,0.4,monZ5); scene.add(frame5);
+    // Glow light — blue
+    const monGlow5=new THREE.PointLight(0x3b82f6,2.5,6.0);
+    monGlow5.position.set(-1.4,0.4,monZ5); scene.add(monGlow5);
+    // Periscope (cylinder above)
+    const perGeo=new THREE.CylinderGeometry(0.08,0.08,0.9,8);
+    const per=new THREE.Mesh(perGeo,mat(0x4a3820));
+    per.position.set(0,1.9,-8); scene.add(per);
+    // Navigation console in center at Z=-6
+    const consGeo=new THREE.BoxGeometry(1.2,0.9,0.6);
+    const cons=new THREE.Mesh(consGeo,mat(0x1a2820,0x040e08,0.08));
+    cons.position.set(0,-0.95,-6); scene.add(cons);
+    // Console screen
+    const cScr=new THREE.Mesh(new THREE.PlaneGeometry(0.9,0.5),new THREE.MeshBasicMaterial({color:0x020c18}));
+    cScr.rotation.x=-0.4; cScr.position.set(0,-0.55,-6.2); scene.add(cScr);
+    const cScrGlow=new THREE.PointLight(0x22c55e,1.2,3.0);
+    cScrGlow.position.set(0,-0.4,-6); scene.add(cScrGlow);
+
+    l5three={renderer,scene,camera,lantern:lantern5,ceilLights:ceilLights5,monZ:monZ5,monGlow:monGlow5};
+
+    const keys5={};
+    function kd5(e){keys5[e.code]=true;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))e.preventDefault();}
+    function ku5(e){keys5[e.code]=false;}
+    document.addEventListener('keydown',kd5);
+    document.addEventListener('keyup',ku5);
+    l5three.removeKeys=()=>{document.removeEventListener('keydown',kd5);document.removeEventListener('keyup',ku5);};
+
+    canvas.addEventListener('click',()=>{if(l5.nearMonitor&&!l5.gameOpen)openL5Game();});
+    document.addEventListener('keydown',e=>{if(e.code==='KeyE'&&currentLevel===5&&l5.nearMonitor&&!l5.gameOpen)openL5Game();});
+
+    let t5=0;
+    function animate5(){
+        l5.animFrame=requestAnimationFrame(animate5);
+        t5+=0.016;
+        if(l5.active&&!l5.gameOpen){
+            const speed=0.07,dir=new THREE.Vector3();
+            camera.getWorldDirection(dir);dir.y=0;dir.normalize();
+            if(keys5['KeyW']||keys5['ArrowUp'])    camera.position.addScaledVector(dir,speed);
+            if(keys5['KeyS']||keys5['ArrowDown'])  camera.position.addScaledVector(dir,-speed);
+            if(keys5['KeyA']||keys5['ArrowLeft'])  camera.rotation.y+=0.028;
+            if(keys5['KeyD']||keys5['ArrowRight']) camera.rotation.y-=0.028;
+            camera.position.x=Math.max(-1.6,Math.min(1.6,camera.position.x));
+            camera.position.y=Math.max(-1.2,Math.min(1.3,camera.position.y));
+            camera.position.z=Math.max(-(HULL_LEN5-2),Math.min(2.5,camera.position.z));
+            lantern5.position.copy(camera.position);
+            const distMon=Math.abs(camera.position.z-l5three.monZ)+Math.abs(camera.position.x+2.0);
+            const prompt5=document.getElementById('l5-prompt');
+            if(distMon<3.5){
+                l5.nearMonitor=true;
+                prompt5.style.opacity='1';
+                prompt5.textContent='🎮 MONITOR DE NAVEGACIÓN — Pulsa E o CLIC para atracar';
+            } else {
+                l5.nearMonitor=false;
+                prompt5.style.opacity='0';
+            }
+            l5three.monGlow.intensity=1.5+Math.sin(t5*3)*0.7;
+        }
+        renderer.render(scene,camera);
+    }
+    animate5();
+
+    print('PUESTO DE MANDO — Sistema de navegación activo.','info');
+    print('Acércate al monitor azul para atracar el submarino.','sys');
+}
+
+function openL5Game(){
+    l5.gameOpen=true;
+    const ov=document.getElementById('l5-game-overlay');
+    ov.style.display='flex';
+    // Reset sub
+    l5game.sub={x:60,y:160,angle:0,vx:0,vy:0,va:0};
+    l5game.parked=false;
+    l5game.attempts=0;
+    // Random dock position (keep away from sub start at x=60)
+    l5game.dock={
+        x:340+Math.random()*100,
+        y:70+Math.random()*180,
+        w:90, h:55, angle:0
+    };
+    // Mines — 4 floating mines placed away from sub start and dock
+    const cv=document.getElementById('l5-park-canvas');
+    const cw=cv?cv.width:560, ch=cv?cv.height:340;
+    l5game.mines=[];
+    const mineCount=4;
+    for(let m=0;m<mineCount;m++){
+        let mx,my,tries=0;
+        do {
+            mx=100+Math.random()*(cw-180);
+            my=40+Math.random()*(ch-80);
+            tries++;
+        } while(tries<30 && (
+            // Keep away from sub start
+            (Math.abs(mx-60)<80 && Math.abs(my-160)<80) ||
+            // Keep away from dock
+            (Math.abs(mx-l5game.dock.x)<90 && Math.abs(my-l5game.dock.y)<80)
+        ));
+        // Slow random drift
+        const speed=0.35+Math.random()*0.25;
+        const dir=Math.random()*Math.PI*2;
+        l5game.mines.push({
+            x:mx, y:my,
+            vx:Math.cos(dir)*speed,
+            vy:Math.sin(dir)*speed,
+            r:16,           // collision radius
+            bobPhase:Math.random()*Math.PI*2,
+            chainAngle:Math.random()*Math.PI*2,
+            exploding:false,
+            explodeT:0
+        });
+    }
+    startL5GameLoop();
+}
+
+let l5gameInterval=null;
+function startL5GameLoop(){
+    clearInterval(l5gameInterval);
+    const cv=document.getElementById('l5-park-canvas');
+    if(!cv) return;
+    const ctx=cv.getContext('2d');
+    const gameKeys={};
+    function gkd(e){gameKeys[e.code]=true;e.preventDefault();}
+    function gku(e){gameKeys[e.code]=false;}
+    document.addEventListener('keydown',gkd);
+    document.addEventListener('keyup',gku);
+
+    let tick=0;
+
+    l5gameInterval=setInterval(()=>{
+        if(!l5.gameOpen){clearInterval(l5gameInterval);document.removeEventListener('keydown',gkd);document.removeEventListener('keyup',gku);return;}
+        tick++;
+        const sub=l5game.sub;
+        const W=cv.width, H=cv.height;
+
+        // ── SUB PHYSICS ──
+        if(gameKeys['ArrowLeft'])  sub.angle-=0.04;
+        if(gameKeys['ArrowRight']) sub.angle+=0.04;
+        if(gameKeys['ArrowUp']){   sub.vx+=Math.cos(sub.angle)*0.18; sub.vy+=Math.sin(sub.angle)*0.18;}
+        if(gameKeys['ArrowDown']){ sub.vx-=Math.cos(sub.angle)*0.10; sub.vy-=Math.sin(sub.angle)*0.10;}
+        sub.vx*=0.96; sub.vy*=0.96;
+        const spd=Math.sqrt(sub.vx*sub.vx+sub.vy*sub.vy);
+        if(spd>3.5){sub.vx=sub.vx/spd*3.5;sub.vy=sub.vy/spd*3.5;}
+        sub.x+=sub.vx; sub.y+=sub.vy;
+        sub.x=Math.max(20,Math.min(W-20,sub.x));
+        sub.y=Math.max(20,Math.min(H-20,sub.y));
+
+        // ── MINE MOVEMENT ──
+        const mines=l5game.mines||[];
+        mines.forEach(mn=>{
+            if(mn.exploding){ mn.explodeT++; return; }
+            mn.x+=mn.vx; mn.y+=mn.vy;
+            // Bounce off walls
+            if(mn.x<mn.r||mn.x>W-mn.r){ mn.vx*=-1; mn.x=Math.max(mn.r,Math.min(W-mn.r,mn.x)); }
+            if(mn.y<mn.r||mn.y>H-mn.r){ mn.vy*=-1; mn.y=Math.max(mn.r,Math.min(H-mn.r,mn.y)); }
+            mn.bobPhase+=0.06;
+            mn.chainAngle+=0.02;
+        });
+
+        // ── DRAW BACKGROUND ──
+        ctx.fillStyle='#020c18'; ctx.fillRect(0,0,W,H);
+        // Sonar grid
+        ctx.strokeStyle='rgba(34,197,94,0.07)'; ctx.lineWidth=1;
+        for(let gx=0;gx<W;gx+=40){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke();}
+        for(let gy=0;gy<H;gy+=40){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();}
+        // Sonar sweep effect (rotating line from center)
+        const sweepAngle=(tick*0.018)%(Math.PI*2);
+        ctx.save();
+        ctx.translate(W/2,H/2);
+        const sweepGrad=ctx.createLinearGradient(0,0,Math.cos(sweepAngle)*Math.max(W,H),Math.sin(sweepAngle)*Math.max(W,H));
+        sweepGrad.addColorStop(0,'rgba(34,197,94,0.18)');
+        sweepGrad.addColorStop(1,'rgba(34,197,94,0)');
+        ctx.beginPath();
+        ctx.moveTo(0,0);
+        ctx.arc(0,0,Math.max(W,H),sweepAngle-0.45,sweepAngle);
+        ctx.closePath();
+        ctx.fillStyle=sweepGrad;
+        ctx.fill();
+        ctx.restore();
+
+        // ── DRAW DOCK ──
+        const dk=l5game.dock;
+        ctx.save(); ctx.translate(dk.x,dk.y); ctx.rotate(dk.angle);
+        ctx.setLineDash([6,4]);
+        ctx.strokeStyle='#22c55e'; ctx.lineWidth=2;
+        ctx.strokeRect(-dk.w/2,-dk.h/2,dk.w,dk.h);
+        ctx.setLineDash([]);
+        ctx.fillStyle='rgba(34,197,94,0.08)';
+        ctx.fillRect(-dk.w/2,-dk.h/2,dk.w,dk.h);
+        ctx.fillStyle='#22c55e'; ctx.font="bold 10px 'Special Elite',monospace";
+        ctx.textAlign='center'; ctx.fillText('⚓ ATRAQUE',0,-dk.h/2-8);
+        ctx.strokeStyle='rgba(34,197,94,0.45)'; ctx.lineWidth=1.5;
+        for(let ai=-1;ai<=1;ai++){
+            ctx.beginPath();ctx.moveTo(ai*18,-dk.h/2-20);ctx.lineTo(ai*18,-dk.h/2-6);ctx.stroke();
+            ctx.beginPath();ctx.moveTo(ai*18-4,-dk.h/2-12);ctx.lineTo(ai*18,-dk.h/2-6);ctx.lineTo(ai*18+4,-dk.h/2-12);ctx.stroke();
+        }
+        ctx.restore();
+
+        // ── DRAW MINES ──
+        mines.forEach(mn=>{
+            if(mn.exploding){
+                // Expanding explosion circle
+                const et=mn.explodeT;
+                if(et<25){
+                    const er=et*5;
+                    const alpha=1-(et/25);
+                    ctx.save();
+                    ctx.beginPath();ctx.arc(mn.x,mn.y,er,0,Math.PI*2);
+                    ctx.fillStyle=`rgba(239,68,68,${alpha*0.5})`;ctx.fill();
+                    ctx.strokeStyle=`rgba(255,160,0,${alpha})`;ctx.lineWidth=3;ctx.stroke();
+                    // Inner flash
+                    ctx.beginPath();ctx.arc(mn.x,mn.y,er*0.4,0,Math.PI*2);
+                    ctx.fillStyle=`rgba(255,255,200,${alpha*0.8})`;ctx.fill();
+                    ctx.restore();
+                }
+                return;
+            }
+            const bob=Math.sin(mn.bobPhase)*2; // vertical bob
+            const mx=mn.x, my=mn.y+bob;
+            ctx.save();
+            // Chain (anchor line to bottom)
+            ctx.strokeStyle='rgba(180,140,60,0.55)'; ctx.lineWidth=1.5;
+            ctx.setLineDash([3,3]);
+            ctx.beginPath();ctx.moveTo(mx,my+mn.r);ctx.lineTo(mx+Math.sin(mn.chainAngle)*6,my+mn.r+18);ctx.stroke();
+            ctx.setLineDash([]);
+            // Mine body — dark sphere with danger stripes
+            const mineGrad=ctx.createRadialGradient(mx-4,my-4,2,mx,my,mn.r);
+            mineGrad.addColorStop(0,'#4a4a4a');
+            mineGrad.addColorStop(0.6,'#1e1e1e');
+            mineGrad.addColorStop(1,'#0a0a0a');
+            ctx.beginPath();ctx.arc(mx,my,mn.r,0,Math.PI*2);
+            ctx.fillStyle=mineGrad;ctx.fill();
+            ctx.strokeStyle='#555';ctx.lineWidth=1.5;ctx.stroke();
+            // Warning stripes (3 yellow bands)
+            ctx.save();ctx.clip();
+            ctx.strokeStyle='rgba(234,179,8,0.55)';ctx.lineWidth=3;
+            for(let s=-2;s<=2;s++){
+                ctx.beginPath();ctx.moveTo(mx-mn.r,my+s*10);ctx.lineTo(mx+mn.r,my+s*10-6);ctx.stroke();
+            }
+            ctx.restore();
+            // Spikes (6 around the body)
+            ctx.strokeStyle='#777';ctx.lineWidth=2;
+            for(let sp=0;sp<6;sp++){
+                const sa=sp*(Math.PI/3);
+                ctx.beginPath();
+                ctx.moveTo(mx+Math.cos(sa)*mn.r,my+Math.sin(sa)*mn.r);
+                ctx.lineTo(mx+Math.cos(sa)*(mn.r+7),my+Math.sin(sa)*(mn.r+7));
+                ctx.stroke();
+                // Spike tip (small red dot)
+                ctx.beginPath();ctx.arc(mx+Math.cos(sa)*(mn.r+7),my+Math.sin(sa)*(mn.r+7),2.5,0,Math.PI*2);
+                ctx.fillStyle='#ef4444';ctx.fill();
+            }
+            // Danger symbol ☠ (simplified skull — red circle)
+            ctx.beginPath();ctx.arc(mx,my,5,0,Math.PI*2);
+            ctx.fillStyle='rgba(239,68,68,0.7)';ctx.fill();
+            // Pulsing warning ring when sub is nearby
+            const dSub=Math.sqrt((sub.x-mx)**2+(sub.y-my)**2);
+            if(dSub<80){
+                const warnAlpha=0.15+(0.25*(1-dSub/80))*Math.abs(Math.sin(tick*0.2));
+                ctx.beginPath();ctx.arc(mx,my,mn.r+12+Math.sin(tick*0.25)*4,0,Math.PI*2);
+                ctx.strokeStyle=`rgba(239,68,68,${warnAlpha})`;ctx.lineWidth=2;ctx.stroke();
+            }
+            ctx.restore();
+        });
+
+        // ── DRAW SUBMARINE ──
+        ctx.save(); ctx.translate(sub.x,sub.y); ctx.rotate(sub.angle);
+        ctx.fillStyle='#d97706';
+        ctx.beginPath(); ctx.ellipse(0,0,28,12,0,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='#92400e'; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.fillStyle='#b45309'; ctx.fillRect(-6,-19,12,10);
+        ctx.fillStyle='#78350f'; ctx.fillRect(-32,-5,6,10);
+        ctx.strokeStyle='#92400e'; ctx.lineWidth=2;
+        ctx.beginPath();ctx.moveTo(0,-12);ctx.lineTo(0,-22);ctx.lineTo(8,-22);ctx.stroke();
+        if(spd>0.5){
+            ctx.strokeStyle='rgba(239,68,68,0.6)';
+            ctx.lineWidth=spd*1.5;
+            ctx.beginPath();ctx.moveTo(-28,0);ctx.lineTo(-28-spd*4,0);ctx.stroke();
+        }
+        ctx.restore();
+
+        // ── HUD ──
+        ctx.fillStyle='rgba(34,197,94,0.85)'; ctx.font="10px 'Special Elite',monospace"; ctx.textAlign='left';
+        ctx.fillText(`VEL: ${spd.toFixed(1)} kn`,10,18);
+        ctx.fillStyle='rgba(239,68,68,0.85)';
+        ctx.fillText(`MINAS: ${mines.filter(m=>!m.exploding).length}`,10,32);
+        // Bearing to dock
+        const ddx=dk.x-sub.x, ddy=dk.y-sub.y;
+        const dist=Math.sqrt(ddx*ddx+ddy*ddy);
+        const bear=Math.atan2(ddy,ddx);
+        ctx.save(); ctx.translate(W-40,40);
+        ctx.strokeStyle='#22c55e'; ctx.lineWidth=2;
+        ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(bear)*24,Math.sin(bear)*24);ctx.stroke();
+        ctx.beginPath();ctx.arc(0,0,24,0,Math.PI*2);ctx.strokeStyle='rgba(34,197,94,0.2)';ctx.lineWidth=1;ctx.stroke();
+        ctx.fillStyle='#22c55e'; ctx.font="8px 'Special Elite',monospace"; ctx.textAlign='center';
+        ctx.fillText('DOCK',0,52); ctx.fillText(`${Math.round(dist)}m`,0,62);
+        ctx.restore();
+
+        // ── MINE COLLISION ──
+        let mineHit=false;
+        mines.forEach(mn=>{
+            if(mn.exploding) return;
+            const d=Math.sqrt((sub.x-mn.x)**2+(sub.y-mn.y)**2);
+            if(d < mn.r+14){
+                mn.exploding=true; mn.explodeT=0;
+                mineHit=true;
+            }
+        });
+        if(mineHit && !l5game.parked){
+            // Flash red
+            ctx.fillStyle='rgba(239,68,68,0.35)'; ctx.fillRect(0,0,W,H);
+            ctx.fillStyle='#ef4444'; ctx.font="bold 20px 'Special Elite',monospace"; ctx.textAlign='center';
+            ctx.fillText('💥 ¡MINA GOLPEADA!',W/2,H/2);
+            clearInterval(l5gameInterval);
+            document.removeEventListener('keydown',gkd);
+            document.removeEventListener('keyup',gku);
+            state.lives--;
+            updateFuses();
+            print('⚠ El Peral ha chocado con una mina. Reiniciando maniobra...','err');
+            toast('💥 ¡Mina! Reiniciando...');
+            document.getElementById('l5-park-status').style.color='#ef4444';
+            document.getElementById('l5-park-status').textContent='💥 ¡Mina detectada! Reposicionando...';
+            if(state.lives<=0){
+                setTimeout(()=>{ l5.gameOpen=false; document.getElementById('l5-game-overlay').style.display='none'; showOverlay('MISIÓN FALLIDA','El Peral fue destruido por una mina. Isaac Peral no llegó a puerto.','#ef4444'); },1800);
+            } else {
+                setTimeout(()=>{ 
+                    document.getElementById('l5-park-status').style.color='#6b7280';
+                    document.getElementById('l5-park-status').textContent='Introduce el submarino en la zona de atraque';
+                    openL5Game();
+                },1800);
+            }
+            return;
+        }
+
+        // ── DOCKING CHECK ──
+        if(!l5game.parked){
+            const inDock = Math.abs(sub.x-dk.x)<dk.w/2 && Math.abs(sub.y-dk.y)<dk.h/2;
+            if(inDock && spd<0.8){
+                l5game.parked=true;
+                ctx.fillStyle='rgba(34,197,94,0.3)'; ctx.fillRect(0,0,W,H);
+                ctx.fillStyle='#22c55e'; ctx.font="bold 22px 'Special Elite',monospace"; ctx.textAlign='center';
+                ctx.fillText('⚓ ATRAQUE COMPLETADO',W/2,H/2);
+                document.getElementById('l5-park-status').style.color='#22c55e';
+                document.getElementById('l5-park-status').textContent='✓ El Peral ha atracado. ¡Misión completada!';
+                clearInterval(l5gameInterval);
+                document.removeEventListener('keydown',gkd);
+                document.removeEventListener('keyup',gku);
+                print('✓ ATRAQUE COMPLETADO. ¡Isaac Peral llega a Cartagena!','info');
+                toast('⚓ ¡Misión completada!');
+                setTimeout(()=>{ 
+                    l5.gameOpen=false;
+                    document.getElementById('l5-game-overlay').style.display='none';
+                    showOverlay('¡MISIÓN COMPLETADA!','Isaac Peral y el Peral han completado su viaje histórico. ¡Enhorabuena!','#22c55e');
+                },2500);
+            }
+        }
+    },33);
+}
+
+// ============================================================
+//  SHARED
+// ============================================================
+function updateFuses() {
+    const fuses = document.querySelectorAll('.life-fuse');
+    fuses.forEach((f, i) => {
+        f.className = `life-fuse ${i < state.lives ? 'fuse-on' : 'fuse-off'}`;
+    });
+}
+
+function showOverlay(title, desc, color) {
+    const o = document.getElementById('overlay');
+    const t = document.getElementById('status-title');
+    t.textContent = title;
+    t.style.color = color;
+    document.getElementById('status-desc').textContent = desc;
+    o.style.display = 'flex';
+}
+
+function resetGame() {
+    state.lives = 3;
+    state.volts = [0, 0, 0];
+    state.inventory = [...DATA];
+    state.selectedIdx = null;
+    document.getElementById('overlay').style.display = 'none';
+    if(document.getElementById('l4-puzzle')) document.getElementById('l4-puzzle').style.display='none';
+    if(document.getElementById('l5-game-overlay')) document.getElementById('l5-game-overlay').style.display='none';
+    clearInterval(l5gameInterval);
+    showLevel(5);
+    print('SISTEMAS REINICIADOS — Protocolo de carga activo.', 'sys');
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+showLevel(5);
+print('Iniciando diagnóstico de sistemas...', 'sys');
+print('Protocolo de carga de acumuladores ACTIVADO.', 'info');
+</script>
+
+<script>
+(function(){
+  const _orig = window.transitionToLevel;
+  window.transitionToLevel = function(next){
+    // Show standard mission-completed overlay regardless of next level
+    const o = document.getElementById('overlay');
+    document.getElementById('status-title').textContent = '¡MISIÓN COMPLETADA!';
+    document.getElementById('status-title').style.color = '#22c55e';
+    document.getElementById('status-desc').textContent = 'Nivel 5 superado con éxito.';
+    o.style.display = 'flex';
+  };
+  const _ovl = window.showOverlay;
+  window.showOverlay = function(t,d,c){
+    if (t && t.toUpperCase().includes('MISIÓN COMPLETADA')) {
+      t = '¡MISIÓN COMPLETADA!'; d = 'Nivel 5 superado con éxito.'; c = '#22c55e';
+    }
+    _ovl(t,d,c);
+  };
+})();
+</script>
+</body>
+</html>

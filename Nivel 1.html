@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submarino Peral — Nivel 1</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=EB+Garamond:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --copper: #8B5E3C;
+            --copper-light: #b07d52;
+            --copper-dark: #5d3d25;
+            --amber: #d97706;
+            --green-glow: #22c55e;
+            --red-alarm: #ef4444;
+            --bg-dark: #0a0a0c;
+            --bg-panel: #1a1c1e;
+            --bg-inner: #0f1113;
+            --text-main: #d4c5a1;
+            --text-dim: #6b7280;
+        }
+
+        * { box-sizing: border-box; }
+        body { font-family: 'EB Garamond', serif; background-color: var(--bg-dark); color: var(--text-main); overflow: hidden; height: 100vh; margin: 0; }
+        .font-retro { font-family: 'Special Elite', monospace; }
+
+        /* CRT scanlines overlay */
+        .crt-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.08) 50%),
+                        linear-gradient(90deg, rgba(255,0,0,0.02), rgba(0,255,0,0.01), rgba(0,0,255,0.02));
+            background-size: 100% 3px, 3px 100%;
+            pointer-events: none; z-index: 9999;
+        }
+
+        /* Steampunk border */
+        .sp-border { border: 3px solid var(--copper); box-shadow: inset 0 0 20px rgba(0,0,0,0.6), 0 0 20px rgba(139,94,60,0.15); }
+        .sp-border-inner { border: 2px solid #333; box-shadow: inset 0 0 10px rgba(0,0,0,0.8); }
+
+        /* Gauge */
+        .gauge-box { position: relative; width: 120px; height: 60px; background: #0a0a0a; border-radius: 60px 60px 0 0; border: 2px solid #3a3a3a; overflow: hidden; }
+        .gauge-bg { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 110px; height: 55px; border-radius: 55px 55px 0 0; background: conic-gradient(from 180deg at 50% 100%, #1a3a1a 0deg, #2d5a1b 60deg, #d97706 100deg, #ef4444 140deg, #ef4444 180deg); }
+        .needle { position: absolute; bottom: 0; left: 50%; width: 2px; height: 48px; background: linear-gradient(to top, #ff4500, #ff6a00); transform-origin: bottom center; transition: transform 0.8s cubic-bezier(0.17, 0.88, 0.32, 1.28); z-index: 10; border-radius: 2px 2px 0 0; }
+        .needle::after { content: ''; position: absolute; bottom: -3px; left: -3px; width: 8px; height: 8px; background: #888; border-radius: 50%; }
+
+        /* Lives / fuses */
+        .life-fuse { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #333; transition: all 0.5s; }
+        .fuse-on { background: var(--green-glow); box-shadow: 0 0 12px var(--green-glow); }
+        .fuse-off { background: #2a0a0a; border-color: #111; }
+
+        /* Cell buttons */
+        .cell-btn {
+            width: 58px; height: 58px; border: 2px solid #3a3a3a; background: #111;
+            font-family: 'Special Elite', monospace; font-size: 11px; color: var(--text-main);
+            transition: all 0.2s; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .cell-btn:hover { border-color: #666; background: #1a1a1a; }
+        .cell-btn.selected { border-color: var(--amber); background: rgba(217,119,6,0.15); transform: scale(1.12); box-shadow: 0 0 12px rgba(217,119,6,0.4); }
+        .cell-btn.used { opacity: 0.2; pointer-events: none; }
+
+        /* Bank buttons */
+        .bank-btn { width: 100%; padding: 6px; background: #1a1a1a; border: 1px solid #444; font-family: 'Special Elite', monospace; font-size: 10px; color: #999; letter-spacing: 2px; transition: all 0.2s; cursor: pointer; }
+        .bank-btn:hover { background: #2a2a2a; border-color: var(--copper); color: var(--text-main); }
+
+        /* Console */
+        #console { height: 200px; background: rgba(0,0,0,0.9); padding: 10px; border: 1px solid #1a3a1a; font-family: 'Special Elite', monospace; font-size: 10px; color: #22c55e; overflow-y: auto; line-height: 1.6; border-radius: 2px; }
+
+        /* Level transition */
+        #level-overlay {
+            display: none; position: fixed; inset: 0; background: #000; z-index: 500;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+
+        /* Game over overlay */
+        #overlay {
+            display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.95);
+            z-index: 400; flex-direction: column; align-items: center; justify-content: center;
+        }
+
+        /* ---- LEVEL 2: RADAR ---- */
+        .radar-wrap {
+            position: relative; width: 300px; height: 300px;
+            border: 2px solid #1a4a1a;
+            border-top: 3px solid #22c55e;
+            border-left: 3px solid #22c55e;
+            background: #020c02;
+            box-shadow: 0 0 24px rgba(0,180,0,0.25), inset 0 0 40px rgba(0,0,0,0.9);
+            overflow: hidden;
+        }
+        /* Corner brackets — military scope aesthetic */
+        .radar-wrap::before, .radar-wrap::after {
+            content: ''; position: absolute; width: 18px; height: 18px;
+            border-color: #22c55e; border-style: solid; z-index: 20;
+        }
+        .radar-wrap::before { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+        .radar-wrap::after  { bottom: 0; left: 0; border-width: 0 0 2px 2px; }
+        .radar-center { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #22c55e; transform: translate(-50%,-50%); box-shadow: 0 0 10px #22c55e; z-index: 5; }
+
+        /* Torpedo status dots */
+        .torp-slot { width: 28px; height: 28px; border-radius: 50%; border: 2px solid #333; transition: all 0.4s; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+        .torp-ready { background: rgba(34,197,94,0.2); border-color: var(--green-glow); box-shadow: 0 0 8px var(--green-glow); color: #22c55e; }
+        .torp-fired { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #ef4444; }
+
+        /* Coord input */
+        .coord-input { background: #050f05; border: 1px solid #1a4a1a; color: #22c55e; font-family: 'Special Elite', monospace; font-size: 14px; padding: 6px 10px; width: 70px; text-align: center; outline: none; }
+        .coord-input:focus { border-color: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.3); }
+
+        .fire-btn { background: linear-gradient(to bottom, #7f1d1d, #450a0a); border: 2px solid #ef4444; color: #fca5a5; font-family: 'Special Elite', monospace; font-size: 12px; letter-spacing: 2px; padding: 8px 20px; cursor: pointer; transition: all 0.2s; }
+        .fire-btn:hover { background: linear-gradient(to bottom, #991b1b, #7f1d1d); box-shadow: 0 0 15px rgba(239,68,68,0.4); }
+        .fire-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* Ship blip on radar */
+        @keyframes blip-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.7); }
+        }
+        .ship-blip { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: #ef4444; animation: blip-pulse 1s infinite; box-shadow: 0 0 8px #ef4444; z-index: 20; pointer-events: none; }
+        .ship-blip.hit { background: #22c55e; animation: none; box-shadow: 0 0 12px #22c55e; }
+        .ship-blip.missed { background: #888; animation: none; box-shadow: none; }
+
+        /* Sweep arm */
+        @keyframes sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .sweep-arm {
+            position: absolute; top: 50%; left: 50%; width: 50%; height: 1px;
+            transform-origin: left center;
+            background: linear-gradient(to right, rgba(34,197,94,1.0), rgba(34,197,94,0));
+            animation: sweep 3s linear infinite; z-index: 3;
+        }
+        .sweep-trail {
+            position: absolute; inset: 0;
+            background: conic-gradient(rgba(34,197,94,0.18) 0deg, transparent 55deg);
+            animation: sweep 3s linear infinite; z-index: 2;
+        }
+
+        /* Grid lines on radar — square grid */
+        .radar-ring {
+            position: absolute;
+            border: 1px solid rgba(34,197,94,0.15);
+        }
+
+        /* Notification toast */
+        #toast { position: fixed; bottom: 20px; right: 20px; background: #1a2a1a; border: 1px solid #22c55e; color: #22c55e; font-family: 'Special Elite', monospace; font-size: 12px; padding: 10px 20px; border-radius: 2px; z-index: 600; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #000; } ::-webkit-scrollbar-thumb { background: var(--copper-dark); }
+
+        /* Button base */
+        .btn-copper { background: linear-gradient(to bottom, var(--copper), var(--copper-dark)); border: none; border-bottom: 3px solid #3a2010; color: #f4e4bc; font-family: 'Special Elite', monospace; font-size: 11px; letter-spacing: 2px; padding: 8px 16px; cursor: pointer; transition: all 0.15s; }
+        .btn-copper:hover { background: linear-gradient(to bottom, var(--copper-light), var(--copper)); }
+        .btn-copper:active { border-bottom-width: 1px; transform: translateY(2px); }
+
+        /* Level indicator */
+        .level-pip { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #444; transition: all 0.4s; }
+        .level-pip.active { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 8px var(--amber); }
+        .level-pip.done { background: var(--green-glow); border-color: var(--green-glow); }
+
+        /* Flat grid map */
+        #grid-map-wrap { background: #020802; padding: 4px; border: 1px solid #1a4a1a; }
+        #grid-map { display: grid; gap: 2px; }
+        .gc-cell {
+            width: 22px; height: 22px;
+            border: 1px solid #0d2a0d;
+            background: rgba(2,8,2,0.85);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 7px; font-family: 'Special Elite', monospace;
+            color: #0a2a0a; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .gc-cell:hover { border-color: #22c55e; background: rgba(34,197,94,0.1); }
+        .gc-label {
+            width: 16px; height: 22px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 8px; font-family: 'Special Elite', monospace;
+            color: #1a5a1a;
+        }
+
+        /* ---- LEVEL 3: 3D SUBMARINE ---- */
+        #level-3 { display:none; width:100%; height:100%; }
+        #l3-canvas-wrap {
+            position: relative; width: 100%; height: 420px;
+            background: #000a12; border: 2px solid #1a3a4a;
+            overflow: hidden; cursor: crosshair;
+        }
+        #l3-canvas { display:block; width:100%; height:100%; }
+
+        /* HUD overlays inside canvas wrap */
+        #l3-hud {
+            position:absolute; inset:0; pointer-events:none;
+            font-family:'Special Elite',monospace;
+        }
+        #l3-timer {
+            position:absolute; top:10px; left:50%; transform:translateX(-50%);
+            font-size:22px; color:#ef4444; text-shadow: 0 0 10px #ef4444;
+            letter-spacing:4px;
+        }
+        #l3-timer.safe { color:#22c55e; text-shadow: 0 0 10px #22c55e; }
+        #l3-breaches-hud {
+            position:absolute; top:10px; right:12px;
+            font-size:11px; color:#d97706; letter-spacing:2px;
+        }
+        #l3-crosshair {
+            position:absolute; top:50%; left:50%;
+            transform:translate(-50%,-50%);
+            width:24px; height:24px; pointer-events:none; opacity:0.6;
+        }
+        #l3-crosshair::before, #l3-crosshair::after {
+            content:''; position:absolute; background:#22c55e;
+        }
+        #l3-crosshair::before { width:100%; height:1px; top:50%; left:0; }
+        #l3-crosshair::after  { height:100%; width:1px; left:50%; top:0; }
+
+        /* Water fill */
+        #l3-water {
+            position:absolute; bottom:0; left:0; width:100%;
+            background: linear-gradient(to top, rgba(0,80,180,0.55), rgba(0,120,220,0.15));
+            transition: height 1s linear;
+            pointer-events:none;
+            border-top: 2px solid rgba(100,180,255,0.4);
+        }
+        #l3-water-label {
+            position:absolute; bottom:0; left:0; width:100%;
+            font-family:'Special Elite',monospace; font-size:9px;
+            color:rgba(100,200,255,0.7); text-align:center; letter-spacing:2px;
+            padding-bottom:2px; pointer-events:none;
+        }
+
+        /* Interaction prompt */
+        #l3-prompt {
+            position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+            background:rgba(0,0,0,0.7); border:1px solid #8B5E3C;
+            color:#d4c5a1; font-family:'Special Elite',monospace;
+            font-size:11px; padding:6px 16px; letter-spacing:2px;
+            white-space:nowrap; pointer-events:none;
+            transition: opacity 0.3s;
+        }
+
+        /* Alarm flash */
+        @keyframes alarm-flash { 0%,100%{opacity:0} 50%{opacity:1} }
+        #l3-alarm {
+            position:absolute; inset:0; pointer-events:none;
+            border: 4px solid #ef4444;
+            animation: alarm-flash 0.8s infinite;
+            display:none;
+        }
+
+        /* Controls bar */
+        #l3-controls {
+            display:flex; gap:6px; justify-content:center;
+            padding:8px 0; background:#050709;
+            border-top:1px solid #1a2a1a;
+        }
+        .l3-ctrl-btn {
+            background:#111; border:1px solid #333; color:#888;
+            font-family:'Special Elite',monospace; font-size:10px;
+            padding:5px 10px; letter-spacing:1px; cursor:default;
+        }
+
+        /* Breaches sidebar list */
+        #l3-breach-list { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+        .breach-item {
+            display:flex; align-items:center; gap:8px;
+            font-family:'Special Elite',monospace; font-size:10px;
+            padding:5px 8px; border:1px solid #1a2a1a; background:#050709;
+            transition: all 0.3s;
+        }
+        .breach-item.fixed { border-color:#22c55e; color:#22c55e; }
+        .breach-item.active { border-color:#ef4444; color:#ef4444; animation: alarm-flash 1s infinite; }
+        .breach-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+        @keyframes scan-line { 0% { top: -2px; } 100% { top: 100%; } }
+        .scan-line { position: absolute; left: 0; width: 100%; height: 2px; background: rgba(34,197,94,0.3); animation: scan-line 2s linear infinite; pointer-events: none; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div class="crt-overlay"></div>
+<div id="toast"></div>
+
+<!-- MAIN GAME CONTAINER -->
+<div class="min-h-screen p-3 flex items-center justify-center" style="height:100vh;">
+<div class="w-full max-w-6xl bg-[#1a1c1e] p-5 sp-border rounded-lg relative" style="overflow: hidden; max-height: 95vh;">
+
+    <!-- GAME OVER / WIN OVERLAY -->
+    <div id="overlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,0.95); z-index:400; flex-direction:column; align-items:center; justify-content:center;">
+        <h1 id="status-title" class="font-retro mb-4" style="font-size: 3rem;"></h1>
+        <p id="status-desc" class="mb-8" style="color: #6b7280; font-style: italic;"></p>
+        <button onclick="resetGame()" class="btn-copper" style="padding: 12px 32px; font-size: 13px;">↻ REINICIAR NIVEL</button>
+    </div>
+
+    <div class="grid grid-cols-12 gap-4" style="height: 100%;">
+
+        <!-- SIDEBAR -->
+        <!-- SIDEBAR -->
+        <aside class="col-span-3" style="display: flex; flex-direction: column; gap: 12px;">
+
+            <!-- Header / Logo -->
+            <div class="sp-border-inner" style="background: #0d0f10; padding: 14px;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <div style="width:8px; height:8px; background:var(--amber); border-radius:50%; box-shadow: 0 0 8px var(--amber);"></div>
+                    <span class="font-retro" style="color:var(--copper-light); font-size:13px; letter-spacing:2px;">PERAL OS v2.0</span>
+                </div>
+                <div style="font-size:9px; color:var(--text-dim); letter-spacing:1px; margin-bottom:12px;">SISTEMA DE CONTROL SUBMARINO</div>
+
+                <!-- Level indicators -->
+                <div style="display:flex; gap:6px; align-items:center; margin-bottom:10px;">
+                    <span style="font-size:9px; color:var(--text-dim); letter-spacing:1px;">NIVEL</span>
+                    <div class="level-pip" id="pip-1"></div>
+                    <div class="level-pip" id="pip-2"></div>
+                    <div class="level-pip" id="pip-3"></div>
+                    <div class="level-pip" id="pip-4"></div>
+                    <div class="level-pip" id="pip-5"></div>
+                </div>
+
+                <!-- Lives -->
+                <div style="display:flex; gap:8px;" id="fuses">
+                    <div class="life-fuse fuse-on"></div>
+                    <div class="life-fuse fuse-on"></div>
+                    <div class="life-fuse fuse-on"></div>
+                </div>
+            </div>
+
+            <!-- Mission briefing -->
+            <div class="sp-border-inner" style="background:#050709; padding:12px; flex-shrink:0;">
+                <div class="font-retro" style="font-size:9px; color:var(--copper); letter-spacing:2px; margin-bottom:8px;">▸ MISIÓN ACTIVA</div>
+                <p id="mission-text" style="font-size:11px; color:#8a9a8a; line-height:1.6;"></p>
+            <div id="l3-breach-list"></div>
+            </div>
+
+            <!-- Console -->
+            <div id="console" style="flex:1; min-height:120px;">
+                <p style="color:#4a7a4a;">> Sistema iniciado...</p>
+            </div>
+
+        </aside>
+
+        <!-- MAIN PANEL -->
+        <main class="col-span-9 sp-border-inner" style="background: var(--bg-inner); padding: 20px; position: relative; overflow: hidden;">
+
+            <!-- Top bar -->
+            <header style="display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; border-bottom: 1px solid #1f2023; margin-bottom:20px;">
+                <div>
+                    <span id="level-badge" class="font-retro" style="font-size:11px; color:var(--copper-light); letter-spacing:3px;"></span>
+                </div>
+                <div id="header-info" style="font-size:9px; color:var(--text-dim); letter-spacing:2px; text-transform:uppercase;"></div>
+            </header>
+
+            <!-- =================== LEVEL 1 =================== -->
+            <div id="level-1">
+                <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:24px; margin-bottom:24px;">
+                    <!-- Bank 0 -->
+                    <div style="display:flex; flex-direction:column; align-items:center;">
+                        <div class="gauge-box">
+                            <div class="gauge-bg"></div>
+                            <div id="needle-0" class="needle" style="transform: rotate(-90deg)"></div>
+                        </div>
+                        <div id="v-0" class="font-retro" style="margin-top:10px; font-size:2rem; color:var(--amber);">0.00V</div>
+                        <div style="font-size:9px; color:var(--text-dim); letter-spacing:2px; margin-bottom:6px;">BANCO B-01</div>
+                        <button class="bank-btn" onclick="fill(0)">▼ CARGAR B-01</button>
+                    </div>
+                    <!-- Bank 1 -->
+                    <div style="display:flex; flex-direction:column; align-items:center;">
+                        <div class="gauge-box">
+                            <div class="gauge-bg"></div>
+                            <div id="needle-1" class="needle" style="transform: rotate(-90deg)"></div>
+                        </div>
+                        <div id="v-1" class="font-retro" style="margin-top:10px; font-size:2rem; color:var(--amber);">0.00V</div>
+                        <div style="font-size:9px; color:var(--text-dim); letter-spacing:2px; margin-bottom:6px;">BANCO B-02</div>
+                        <button class="bank-btn" onclick="fill(1)">▼ CARGAR B-02</button>
+                    </div>
+                    <!-- Bank 2 -->
+                    <div style="display:flex; flex-direction:column; align-items:center;">
+                        <div class="gauge-box">
+                            <div class="gauge-bg"></div>
+                            <div id="needle-2" class="needle" style="transform: rotate(-90deg)"></div>
+                        </div>
+                        <div id="v-2" class="font-retro" style="margin-top:10px; font-size:2rem; color:var(--amber);">0.00V</div>
+                        <div style="font-size:9px; color:var(--text-dim); letter-spacing:2px; margin-bottom:6px;">BANCO B-03</div>
+                        <button class="bank-btn" onclick="fill(2)">▼ CARGAR B-03</button>
+                    </div>
+                </div>
+
+                <!-- Cells -->
+                <div class="sp-border-inner" style="background:#050709; padding:16px;">
+                    <div class="font-retro" style="font-size:9px; color:var(--text-dim); letter-spacing:3px; text-align:center; margin-bottom:12px;">▸ CÉLULAS DE ENERGÍA DISPONIBLES</div>
+                    <div id="cells" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;"></div>
+                </div>
+
+                <!-- L1 hint -->
+                <div style="margin-top:12px; text-align:center; font-size:10px; color:#2a4a2a; font-style:italic;">
+                    Objetivo: cada banco debe alcanzar exactamente 31.25V • Selecciona una célula → clic en el banco
+                </div>
+            </div>
+
+            
+
+        </main>
+    </div>
+</div>
+</div>
+
+<script>
+
+// ── ESTADO GLOBAL ────────────────────────────────────────────────────────────
+const GOAL = 31.25;
+const DATA = [10.25, 21.00, 15.50, 15.75, 12.50, 10.00, 8.75];
+let currentLevel = 1;
+
+let state = {
+    lives: 3,
+    volts: [0, 0, 0],
+    inventory: [...DATA],
+    selectedIdx: null
+};
+
+// ── CONSOLE / TOAST ──────────────────────────────────────────────────────────
+function print(msg, type = 'info') {
+    const c = document.getElementById('console');
+    const colors = { info: '#22c55e', err: '#ef4444', warn: '#d97706', sys: '#6b7280' };
+    const el = document.createElement('p');
+    el.style.color = colors[type] || colors.info;
+    el.textContent = '> ' + msg;
+    c.appendChild(el);
+    c.scrollTop = c.scrollHeight;
+}
+function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; }, 2500);
+}
+
+// ── FUSES ────────────────────────────────────────────────────────────────────
+function updateFuses() {
+    const fuses = document.querySelectorAll('.life-fuse');
+    fuses.forEach((f, i) => {
+        f.className = `life-fuse ${i < state.lives ? 'fuse-on' : 'fuse-off'}`;
+    });
+}
+
+// ── OVERLAYS ─────────────────────────────────────────────────────────────────
+function showOverlay(title, desc, color) {
+    const o = document.getElementById('overlay');
+    document.getElementById('status-title').textContent = title;
+    document.getElementById('status-title').style.color = color;
+    document.getElementById('status-desc').textContent = desc;
+    o.style.display = 'flex';
+}
+
+// Al terminar el nivel: mostrar "NIVEL COMPLETADO" sin redirigir
+function levelCompleted(title, desc) {
+    showOverlay(title || '¡NIVEL COMPLETADO!', desc || 'Has superado este nivel.', '#22c55e');
+}
+
+// Reiniciar el nivel actual (botón del overlay de game-over)
+function resetGame() {
+    state.lives = 3;
+    state.volts = [0, 0, 0];
+    state.inventory = [...DATA];
+    state.selectedIdx = null;
+    document.getElementById('overlay').style.display = 'none';
+    state.volts=[0,0,0]; state.inventory=[...DATA]; state.selectedIdx=null; updateL1UI();
+}
+
+// ── LEVEL PIPS ───────────────────────────────────────────────────────────────
+function updateLevelPips() {
+    for (let i = 1; i <= 5; i++) {
+        const pip = document.getElementById(`pip-${i}`);
+        if (!pip) continue;
+        pip.classList.remove('active', 'done');
+        if (i < currentLevel) pip.classList.add('done');
+        else if (i === currentLevel) pip.classList.add('active');
+    }
+}
+
+
+// ============================================================
+//  LEVEL 1 — ACUMULADORES
+// ============================================================
+function updateL1UI() {
+    // Render cells
+    const container = document.getElementById('cells');
+    container.innerHTML = '';
+    state.inventory.forEach((val, i) => {
+        const btn = document.createElement('button');
+        btn.className = `cell-btn font-retro ${state.selectedIdx === i ? 'selected' : ''}`;
+        btn.textContent = val.toFixed(2);
+        btn.onclick = () => { state.selectedIdx = i; updateL1UI(); };
+        container.appendChild(btn);
+    });
+
+    // Update needles + volt displays
+    state.volts.forEach((v, i) => {
+        const txt = document.getElementById(`v-${i}`);
+        txt.textContent = v.toFixed(2) + 'V';
+        if (v === GOAL) {
+            txt.style.color = '#22c55e';
+            txt.style.textShadow = '0 0 10px #22c55e';
+        } else if (v > GOAL) {
+            txt.style.color = '#ef4444';
+            txt.style.textShadow = '0 0 10px #ef4444';
+            txt.style.animation = 'pulse 0.5s infinite alternate';
+        } else {
+            txt.style.color = 'var(--amber)';
+            txt.style.textShadow = 'none';
+            txt.style.animation = '';
+        }
+        const angle = (Math.min(v, 40) / 40 * 180) - 90;
+        document.getElementById(`needle-${i}`).style.transform = `rotate(${angle}deg)`;
+    });
+
+    // Update fuses
+    updateFuses();
+}
+
+function fill(bankIdx) {
+    if (state.selectedIdx === null) {
+        print('AVISO: Selecciona una célula primero.', 'warn');
+        toast('⚠ Selecciona una célula primero');
+        return;
+    }
+    const value = state.inventory[state.selectedIdx];
+    state.volts[bankIdx] = parseFloat((state.volts[bankIdx] + value).toFixed(2));
+    state.inventory.splice(state.selectedIdx, 1);
+    state.selectedIdx = null;
+    print(`+${value}V enviados al Banco B-0${bankIdx + 1}. Total: ${state.volts[bankIdx].toFixed(2)}V`);
+    updateL1UI();
+    checkL1Game();
+}
+
+function checkL1Game() {
+    const allCorrect = state.volts.every(v => v === GOAL);
+    const overLimit = state.volts.some(v => v > GOAL);
+    const noMoves = state.inventory.length === 0 && !allCorrect;
+
+    if (allCorrect) {
+        print('✓ TODOS LOS BANCOS ESTABILIZADOS. ¡Misión completada!', 'info');
+        setTimeout(() => levelCompleted('¡ENERGÍA ESTABILIZADA!', 'Los acumuladores del Peral operan al 100%. Nivel superado.'), 800);
+        return;
+    }
+    if (overLimit || noMoves) {
+        state.lives--;
+        updateFuses();
+        if (state.lives <= 0) {
+            showOverlay('COLAPSO TOTAL', 'Has fundido los plomos del submarino. Sistema inutilizado.', '#ef4444');
+        } else {
+            print(overLimit ? 'SOBRECARGA DETECTADA — Reiniciando nivel...' : 'SIN COMBINACIÓN VÁLIDA — Reiniciando...', 'err');
+            toast(overLimit ? '⚡ Sobrecarga — reiniciando' : '⛔ Sin solución — reiniciando');
+            setTimeout(softResetL1, 1400);
+        }
+    }
+}
+
+function softResetL1() {
+    state.volts = [0, 0, 0];
+    state.inventory = [...DATA];
+    state.selectedIdx = null;
+    updateL1UI();
+}
+
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+(function() {
+    document.getElementById('level-badge').textContent = 'NIVEL 01 — SALA DE ACUMULADORES';
+    document.getElementById('header-info').textContent = 'Protocolo de carga: 31.25V por banco';
+    document.getElementById('mission-text').textContent = 'Los acumuladores del Peral están descargados. Combina las células de energía para cargar cada banco a exactamente 31.25 voltios.';
+    updateLevelPips();
+    updateFuses();
+    updateL1UI(); print("Iniciando diagnóstico de sistemas...", "sys"); print("Protocolo de carga de acumuladores ACTIVADO.", "info");
+})();
+</script>
+</body>
+</html>

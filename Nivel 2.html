@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submarino Peral — Nivel 2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=EB+Garamond:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --copper: #8B5E3C;
+            --copper-light: #b07d52;
+            --copper-dark: #5d3d25;
+            --amber: #d97706;
+            --green-glow: #22c55e;
+            --red-alarm: #ef4444;
+            --bg-dark: #0a0a0c;
+            --bg-panel: #1a1c1e;
+            --bg-inner: #0f1113;
+            --text-main: #d4c5a1;
+            --text-dim: #6b7280;
+        }
+
+        * { box-sizing: border-box; }
+        body { font-family: 'EB Garamond', serif; background-color: var(--bg-dark); color: var(--text-main); overflow: hidden; height: 100vh; margin: 0; }
+        .font-retro { font-family: 'Special Elite', monospace; }
+
+        /* CRT scanlines overlay */
+        .crt-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.08) 50%),
+                        linear-gradient(90deg, rgba(255,0,0,0.02), rgba(0,255,0,0.01), rgba(0,0,255,0.02));
+            background-size: 100% 3px, 3px 100%;
+            pointer-events: none; z-index: 9999;
+        }
+
+        /* Steampunk border */
+        .sp-border { border: 3px solid var(--copper); box-shadow: inset 0 0 20px rgba(0,0,0,0.6), 0 0 20px rgba(139,94,60,0.15); }
+        .sp-border-inner { border: 2px solid #333; box-shadow: inset 0 0 10px rgba(0,0,0,0.8); }
+
+        /* Gauge */
+        .gauge-box { position: relative; width: 120px; height: 60px; background: #0a0a0a; border-radius: 60px 60px 0 0; border: 2px solid #3a3a3a; overflow: hidden; }
+        .gauge-bg { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 110px; height: 55px; border-radius: 55px 55px 0 0; background: conic-gradient(from 180deg at 50% 100%, #1a3a1a 0deg, #2d5a1b 60deg, #d97706 100deg, #ef4444 140deg, #ef4444 180deg); }
+        .needle { position: absolute; bottom: 0; left: 50%; width: 2px; height: 48px; background: linear-gradient(to top, #ff4500, #ff6a00); transform-origin: bottom center; transition: transform 0.8s cubic-bezier(0.17, 0.88, 0.32, 1.28); z-index: 10; border-radius: 2px 2px 0 0; }
+        .needle::after { content: ''; position: absolute; bottom: -3px; left: -3px; width: 8px; height: 8px; background: #888; border-radius: 50%; }
+
+        /* Lives / fuses */
+        .life-fuse { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #333; transition: all 0.5s; }
+        .fuse-on { background: var(--green-glow); box-shadow: 0 0 12px var(--green-glow); }
+        .fuse-off { background: #2a0a0a; border-color: #111; }
+
+        /* Cell buttons */
+        .cell-btn {
+            width: 58px; height: 58px; border: 2px solid #3a3a3a; background: #111;
+            font-family: 'Special Elite', monospace; font-size: 11px; color: var(--text-main);
+            transition: all 0.2s; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .cell-btn:hover { border-color: #666; background: #1a1a1a; }
+        .cell-btn.selected { border-color: var(--amber); background: rgba(217,119,6,0.15); transform: scale(1.12); box-shadow: 0 0 12px rgba(217,119,6,0.4); }
+        .cell-btn.used { opacity: 0.2; pointer-events: none; }
+
+        /* Bank buttons */
+        .bank-btn { width: 100%; padding: 6px; background: #1a1a1a; border: 1px solid #444; font-family: 'Special Elite', monospace; font-size: 10px; color: #999; letter-spacing: 2px; transition: all 0.2s; cursor: pointer; }
+        .bank-btn:hover { background: #2a2a2a; border-color: var(--copper); color: var(--text-main); }
+
+        /* Console */
+        #console { height: 200px; background: rgba(0,0,0,0.9); padding: 10px; border: 1px solid #1a3a1a; font-family: 'Special Elite', monospace; font-size: 10px; color: #22c55e; overflow-y: auto; line-height: 1.6; border-radius: 2px; }
+
+        /* Level transition */
+        #level-overlay {
+            display: none; position: fixed; inset: 0; background: #000; z-index: 500;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+
+        /* Game over overlay */
+        #overlay {
+            display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.95);
+            z-index: 400; flex-direction: column; align-items: center; justify-content: center;
+        }
+
+        /* ---- LEVEL 2: RADAR ---- */
+        .radar-wrap {
+            position: relative; width: 300px; height: 300px;
+            border: 2px solid #1a4a1a;
+            border-top: 3px solid #22c55e;
+            border-left: 3px solid #22c55e;
+            background: #020c02;
+            box-shadow: 0 0 24px rgba(0,180,0,0.25), inset 0 0 40px rgba(0,0,0,0.9);
+            overflow: hidden;
+        }
+        /* Corner brackets — military scope aesthetic */
+        .radar-wrap::before, .radar-wrap::after {
+            content: ''; position: absolute; width: 18px; height: 18px;
+            border-color: #22c55e; border-style: solid; z-index: 20;
+        }
+        .radar-wrap::before { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+        .radar-wrap::after  { bottom: 0; left: 0; border-width: 0 0 2px 2px; }
+        .radar-center { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #22c55e; transform: translate(-50%,-50%); box-shadow: 0 0 10px #22c55e; z-index: 5; }
+
+        /* Torpedo status dots */
+        .torp-slot { width: 28px; height: 28px; border-radius: 50%; border: 2px solid #333; transition: all 0.4s; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+        .torp-ready { background: rgba(34,197,94,0.2); border-color: var(--green-glow); box-shadow: 0 0 8px var(--green-glow); color: #22c55e; }
+        .torp-fired { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #ef4444; }
+
+        /* Coord input */
+        .coord-input { background: #050f05; border: 1px solid #1a4a1a; color: #22c55e; font-family: 'Special Elite', monospace; font-size: 14px; padding: 6px 10px; width: 70px; text-align: center; outline: none; }
+        .coord-input:focus { border-color: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.3); }
+
+        .fire-btn { background: linear-gradient(to bottom, #7f1d1d, #450a0a); border: 2px solid #ef4444; color: #fca5a5; font-family: 'Special Elite', monospace; font-size: 12px; letter-spacing: 2px; padding: 8px 20px; cursor: pointer; transition: all 0.2s; }
+        .fire-btn:hover { background: linear-gradient(to bottom, #991b1b, #7f1d1d); box-shadow: 0 0 15px rgba(239,68,68,0.4); }
+        .fire-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* Ship blip on radar */
+        @keyframes blip-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.7); }
+        }
+        .ship-blip { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: #ef4444; animation: blip-pulse 1s infinite; box-shadow: 0 0 8px #ef4444; z-index: 20; pointer-events: none; }
+        .ship-blip.hit { background: #22c55e; animation: none; box-shadow: 0 0 12px #22c55e; }
+        .ship-blip.missed { background: #888; animation: none; box-shadow: none; }
+
+        /* Sweep arm */
+        @keyframes sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .sweep-arm {
+            position: absolute; top: 50%; left: 50%; width: 50%; height: 1px;
+            transform-origin: left center;
+            background: linear-gradient(to right, rgba(34,197,94,1.0), rgba(34,197,94,0));
+            animation: sweep 3s linear infinite; z-index: 3;
+        }
+        .sweep-trail {
+            position: absolute; inset: 0;
+            background: conic-gradient(rgba(34,197,94,0.18) 0deg, transparent 55deg);
+            animation: sweep 3s linear infinite; z-index: 2;
+        }
+
+        /* Grid lines on radar — square grid */
+        .radar-ring {
+            position: absolute;
+            border: 1px solid rgba(34,197,94,0.15);
+        }
+
+        /* Notification toast */
+        #toast { position: fixed; bottom: 20px; right: 20px; background: #1a2a1a; border: 1px solid #22c55e; color: #22c55e; font-family: 'Special Elite', monospace; font-size: 12px; padding: 10px 20px; border-radius: 2px; z-index: 600; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #000; } ::-webkit-scrollbar-thumb { background: var(--copper-dark); }
+
+        /* Button base */
+        .btn-copper { background: linear-gradient(to bottom, var(--copper), var(--copper-dark)); border: none; border-bottom: 3px solid #3a2010; color: #f4e4bc; font-family: 'Special Elite', monospace; font-size: 11px; letter-spacing: 2px; padding: 8px 16px; cursor: pointer; transition: all 0.15s; }
+        .btn-copper:hover { background: linear-gradient(to bottom, var(--copper-light), var(--copper)); }
+        .btn-copper:active { border-bottom-width: 1px; transform: translateY(2px); }
+
+        /* Level indicator */
+        .level-pip { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #444; transition: all 0.4s; }
+        .level-pip.active { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 8px var(--amber); }
+        .level-pip.done { background: var(--green-glow); border-color: var(--green-glow); }
+
+        /* Flat grid map */
+        #grid-map-wrap { background: #020802; padding: 4px; border: 1px solid #1a4a1a; }
+        #grid-map { display: grid; gap: 2px; }
+        .gc-cell {
+            width: 22px; height: 22px;
+            border: 1px solid #0d2a0d;
+            background: rgba(2,8,2,0.85);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 7px; font-family: 'Special Elite', monospace;
+            color: #0a2a0a; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .gc-cell:hover { border-color: #22c55e; background: rgba(34,197,94,0.1); }
+        .gc-label {
+            width: 16px; height: 22px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 8px; font-family: 'Special Elite', monospace;
+            color: #1a5a1a;
+        }
+
+        /* ---- LEVEL 3: 3D SUBMARINE ---- */
+        #level-3 { display:none; width:100%; height:100%; }
+        #l3-canvas-wrap {
+            position: relative; width: 100%; height: 420px;
+            background: #000a12; border: 2px solid #1a3a4a;
+            overflow: hidden; cursor: crosshair;
+        }
+        #l3-canvas { display:block; width:100%; height:100%; }
+
+        /* HUD overlays inside canvas wrap */
+        #l3-hud {
+            position:absolute; inset:0; pointer-events:none;
+            font-family:'Special Elite',monospace;
+        }
+        #l3-timer {
+            position:absolute; top:10px; left:50%; transform:translateX(-50%);
+            font-size:22px; color:#ef4444; text-shadow: 0 0 10px #ef4444;
+            letter-spacing:4px;
+        }
+        #l3-timer.safe { color:#22c55e; text-shadow: 0 0 10px #22c55e; }
+        #l3-breaches-hud {
+            position:absolute; top:10px; right:12px;
+            font-size:11px; color:#d97706; letter-spacing:2px;
+        }
+        #l3-crosshair {
+            position:absolute; top:50%; left:50%;
+            transform:translate(-50%,-50%);
+            width:24px; height:24px; pointer-events:none; opacity:0.6;
+        }
+        #l3-crosshair::before, #l3-crosshair::after {
+            content:''; position:absolute; background:#22c55e;
+        }
+        #l3-crosshair::before { width:100%; height:1px; top:50%; left:0; }
+        #l3-crosshair::after  { height:100%; width:1px; left:50%; top:0; }
+
+        /* Water fill */
+        #l3-water {
+            position:absolute; bottom:0; left:0; width:100%;
+            background: linear-gradient(to top, rgba(0,80,180,0.55), rgba(0,120,220,0.15));
+            transition: height 1s linear;
+            pointer-events:none;
+            border-top: 2px solid rgba(100,180,255,0.4);
+        }
+        #l3-water-label {
+            position:absolute; bottom:0; left:0; width:100%;
+            font-family:'Special Elite',monospace; font-size:9px;
+            color:rgba(100,200,255,0.7); text-align:center; letter-spacing:2px;
+            padding-bottom:2px; pointer-events:none;
+        }
+
+        /* Interaction prompt */
+        #l3-prompt {
+            position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+            background:rgba(0,0,0,0.7); border:1px solid #8B5E3C;
+            color:#d4c5a1; font-family:'Special Elite',monospace;
+            font-size:11px; padding:6px 16px; letter-spacing:2px;
+            white-space:nowrap; pointer-events:none;
+            transition: opacity 0.3s;
+        }
+
+        /* Alarm flash */
+        @keyframes alarm-flash { 0%,100%{opacity:0} 50%{opacity:1} }
+        #l3-alarm {
+            position:absolute; inset:0; pointer-events:none;
+            border: 4px solid #ef4444;
+            animation: alarm-flash 0.8s infinite;
+            display:none;
+        }
+
+        /* Controls bar */
+        #l3-controls {
+            display:flex; gap:6px; justify-content:center;
+            padding:8px 0; background:#050709;
+            border-top:1px solid #1a2a1a;
+        }
+        .l3-ctrl-btn {
+            background:#111; border:1px solid #333; color:#888;
+            font-family:'Special Elite',monospace; font-size:10px;
+            padding:5px 10px; letter-spacing:1px; cursor:default;
+        }
+
+        /* Breaches sidebar list */
+        #l3-breach-list { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+        .breach-item {
+            display:flex; align-items:center; gap:8px;
+            font-family:'Special Elite',monospace; font-size:10px;
+            padding:5px 8px; border:1px solid #1a2a1a; background:#050709;
+            transition: all 0.3s;
+        }
+        .breach-item.fixed { border-color:#22c55e; color:#22c55e; }
+        .breach-item.active { border-color:#ef4444; color:#ef4444; animation: alarm-flash 1s infinite; }
+        .breach-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+        @keyframes scan-line { 0% { top: -2px; } 100% { top: 100%; } }
+        .scan-line { position: absolute; left: 0; width: 100%; height: 2px; background: rgba(34,197,94,0.3); animation: scan-line 2s linear infinite; pointer-events: none; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div class="crt-overlay"></div>
+<div id="toast"></div>
+
+<!-- MAIN GAME CONTAINER -->
+<div class="min-h-screen p-3 flex items-center justify-center" style="height:100vh;">
+<div class="w-full max-w-6xl bg-[#1a1c1e] p-5 sp-border rounded-lg relative" style="overflow: hidden; max-height: 95vh;">
+
+    <!-- GAME OVER / WIN OVERLAY -->
+    <div id="overlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,0.95); z-index:400; flex-direction:column; align-items:center; justify-content:center;">
+        <h1 id="status-title" class="font-retro mb-4" style="font-size: 3rem;"></h1>
+        <p id="status-desc" class="mb-8" style="color: #6b7280; font-style: italic;"></p>
+        <button onclick="resetGame()" class="btn-copper" style="padding: 12px 32px; font-size: 13px;">↻ REINICIAR NIVEL</button>
+    </div>
+
+    <div class="grid grid-cols-12 gap-4" style="height: 100%;">
+
+        <!-- SIDEBAR -->
+        <!-- SIDEBAR -->
+        <aside class="col-span-3" style="display: flex; flex-direction: column; gap: 12px;">
+
+            <!-- Header / Logo -->
+            <div class="sp-border-inner" style="background: #0d0f10; padding: 14px;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <div style="width:8px; height:8px; background:var(--amber); border-radius:50%; box-shadow: 0 0 8px var(--amber);"></div>
+                    <span class="font-retro" style="color:var(--copper-light); font-size:13px; letter-spacing:2px;">PERAL OS v2.0</span>
+                </div>
+                <div style="font-size:9px; color:var(--text-dim); letter-spacing:1px; margin-bottom:12px;">SISTEMA DE CONTROL SUBMARINO</div>
+
+                <!-- Level indicators -->
+                <div style="display:flex; gap:6px; align-items:center; margin-bottom:10px;">
+                    <span style="font-size:9px; color:var(--text-dim); letter-spacing:1px;">NIVEL</span>
+                    <div class="level-pip" id="pip-1"></div>
+                    <div class="level-pip" id="pip-2"></div>
+                    <div class="level-pip" id="pip-3"></div>
+                    <div class="level-pip" id="pip-4"></div>
+                    <div class="level-pip" id="pip-5"></div>
+                </div>
+
+                <!-- Lives -->
+                <div style="display:flex; gap:8px;" id="fuses">
+                    <div class="life-fuse fuse-on"></div>
+                    <div class="life-fuse fuse-on"></div>
+                    <div class="life-fuse fuse-on"></div>
+                </div>
+            </div>
+
+            <!-- Mission briefing -->
+            <div class="sp-border-inner" style="background:#050709; padding:12px; flex-shrink:0;">
+                <div class="font-retro" style="font-size:9px; color:var(--copper); letter-spacing:2px; margin-bottom:8px;">▸ MISIÓN ACTIVA</div>
+                <p id="mission-text" style="font-size:11px; color:#8a9a8a; line-height:1.6;"></p>
+            <div id="l3-breach-list"></div>
+            </div>
+
+            <!-- Console -->
+            <div id="console" style="flex:1; min-height:120px;">
+                <p style="color:#4a7a4a;">> Sistema iniciado...</p>
+            </div>
+
+        </aside>
+
+        <!-- MAIN PANEL -->
+        <main class="col-span-9 sp-border-inner" style="background: var(--bg-inner); padding: 20px; position: relative; overflow: hidden;">
+
+            <!-- Top bar -->
+            <header style="display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; border-bottom: 1px solid #1f2023; margin-bottom:20px;">
+                <div>
+                    <span id="level-badge" class="font-retro" style="font-size:11px; color:var(--copper-light); letter-spacing:3px;"></span>
+                </div>
+                <div id="header-info" style="font-size:9px; color:var(--text-dim); letter-spacing:2px; text-transform:uppercase;"></div>
+            </header>
+
+            <!-- =================== LEVEL 2 =================== -->
+            <div id="level-2">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px; height:100%;">
+
+                    <!-- Left: RADAR = mapa interactivo unificado -->
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div class="font-retro" style="font-size:9px; color:#1a5a1a; letter-spacing:3px;">▸ PANTALLA DE RADAR SONAR — CUADRÍCULA TÁCTICA</div>
+
+                        <!-- Radar grid unificado: sweep encima del grid clicable -->
+                        <div style="position:relative; display:inline-block;">
+                            <!-- El sweep animado va ENCIMA del grid, pointer-events:none -->
+                            <div id="radar-sweep-overlay" style="
+                                position:absolute; inset:0;
+                                pointer-events:none; z-index:5; overflow:hidden;
+                                background:transparent;
+                            ">
+                                <div class="sweep-trail" style="position:absolute;inset:0; border-radius:0;"></div>
+                                <div class="sweep-arm" style="position:absolute; top:50%; left:50%; width:50%; height:1px; transform-origin:left center;"></div>
+                                <div style="position:absolute;top:50%;left:50%;width:6px;height:6px;background:#22c55e;transform:translate(-50%,-50%);box-shadow:0 0 10px #22c55e;border-radius:50%;z-index:6;"></div>
+                                <div class="scan-line"></div>
+                            </div>
+                            <!-- Grid táctica clicable -->
+                            <div id="radar-grid-wrap" style="
+                                position:relative; z-index:10;
+                                background:transparent;
+                                padding:4px;
+                                border:2px solid #1a4a1a;
+                                border-top:3px solid #22c55e;
+                                border-left:3px solid #22c55e;
+                                box-shadow:0 0 24px rgba(0,180,0,0.25), inset 0 0 40px rgba(0,0,0,0.9);
+                            ">
+                                <div id="radar-grid"></div>
+                            </div>
+                        </div>
+
+                        <!-- Torpedo slots -->
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:4px;">
+                            <span class="font-retro" style="font-size:9px; color:var(--text-dim); letter-spacing:1px; margin-right:4px;">TORPEDOS:</span>
+                            <div id="torp-slots" style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <div class="torp-slot torp-ready font-retro" id="torp-0">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-1">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-2">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-3">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-4">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-5">T</div>
+                                <div class="torp-slot torp-ready font-retro" id="torp-6">T</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Control panel -->
+                    <div style="display:flex; flex-direction:column; gap:10px; overflow:hidden; min-height:0;">
+
+                        <!-- Ship info display -->
+                        <div class="sp-border-inner" style="background:#020802; padding:14px;">
+                            <div class="font-retro" style="font-size:9px; color:#1a4a1a; letter-spacing:2px; margin-bottom:8px;">▸ CONTACTO SONAR DETECTADO</div>
+                            <div id="ship-info" style="font-size:12px; color:#22c55e; line-height:1.8;">
+                                <span style="color:#4a6a4a;">Esperando señal del radar...</span>
+                            </div>
+                        </div>
+
+                        <!-- Coordinate input -->
+                        <div class="sp-border-inner" style="background:#020802; padding:14px;">
+                            <div class="font-retro" style="font-size:9px; color:#1a4a1a; letter-spacing:2px; margin-bottom:12px;">▸ INTRODUCIR COORDENADAS DE DISPARO</div>
+
+                            <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+                                <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
+                                    <label class="font-retro" style="font-size:9px; color:var(--text-dim); letter-spacing:1px;">EJE X</label>
+                                    <input type="number" id="coord-x" class="coord-input" min="0" max="9" placeholder="0-9" />
+                                </div>
+                                <div style="font-size:20px; color:#1a4a1a; margin-top:16px;">×</div>
+                                <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
+                                    <label class="font-retro" style="font-size:9px; color:var(--text-dim); letter-spacing:1px;">EJE Y</label>
+                                    <input type="number" id="coord-y" class="coord-input" min="0" max="9" placeholder="0-9" />
+                                </div>
+                                <button class="fire-btn" id="fire-btn" onclick="fireTorpedo()" style="margin-top:16px;">⊕ FUEGO</button>
+                            </div>
+
+                            <div id="shot-result" style="font-size:11px; color:#4a6a4a; font-style:italic; min-height:18px;"></div>
+                        </div>
+
+                        <!-- Instrucciones -->
+                        <div class="sp-border-inner" style="background:#020802; padding:10px;">
+                            <div class="font-retro" style="font-size:9px; color:#1a4a1a; letter-spacing:2px; margin-bottom:6px;">▸ INSTRUCCIONES DE PUNTERÍA</div>
+                            <div style="font-size:10px; color:#2a5a2a; line-height:1.7;">
+                                1. Las señales <span style="color:#ef4444;">●</span> rojas son contactos enemigos.<br>
+                                2. Haz clic sobre una señal roja en el radar.<br>
+                                3. Las coordenadas se cargarán automáticamente.<br>
+                                4. Pulsa <span style="color:#fca5a5;">⊕ FUEGO</span> para lanzar el torpedo.
+                            </div>
+                        </div>
+
+                        <!-- Score -->
+                        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim);">
+                            <span class="font-retro">IMPACTOS: <span id="hits-count" style="color:#22c55e;">0</span></span>
+                            <span class="font-retro">DISPAROS: <span id="shots-count" style="color:var(--amber);">0</span></span>
+                            <span class="font-retro">OBJETIVO: <span style="color:#4a6a4a;" id="target-count">?</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            
+
+        </main>
+    </div>
+</div>
+</div>
+
+<script>
+
+// ── ESTADO GLOBAL ────────────────────────────────────────────────────────────
+const GOAL = 31.25;
+const DATA = [10.25, 21.00, 15.50, 15.75, 12.50, 10.00, 8.75];
+let currentLevel = 2;
+
+let state = {
+    lives: 3,
+    volts: [0, 0, 0],
+    inventory: [...DATA],
+    selectedIdx: null
+};
+
+// ── CONSOLE / TOAST ──────────────────────────────────────────────────────────
+function print(msg, type = 'info') {
+    const c = document.getElementById('console');
+    const colors = { info: '#22c55e', err: '#ef4444', warn: '#d97706', sys: '#6b7280' };
+    const el = document.createElement('p');
+    el.style.color = colors[type] || colors.info;
+    el.textContent = '> ' + msg;
+    c.appendChild(el);
+    c.scrollTop = c.scrollHeight;
+}
+function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; }, 2500);
+}
+
+// ── FUSES ────────────────────────────────────────────────────────────────────
+function updateFuses() {
+    const fuses = document.querySelectorAll('.life-fuse');
+    fuses.forEach((f, i) => {
+        f.className = `life-fuse ${i < state.lives ? 'fuse-on' : 'fuse-off'}`;
+    });
+}
+
+// ── OVERLAYS ─────────────────────────────────────────────────────────────────
+function showOverlay(title, desc, color) {
+    const o = document.getElementById('overlay');
+    document.getElementById('status-title').textContent = title;
+    document.getElementById('status-title').style.color = color;
+    document.getElementById('status-desc').textContent = desc;
+    o.style.display = 'flex';
+}
+
+// Al terminar el nivel: mostrar "NIVEL COMPLETADO" sin redirigir
+function levelCompleted(title, desc) {
+    showOverlay(title || '¡NIVEL COMPLETADO!', desc || 'Has superado este nivel.', '#22c55e');
+}
+
+// Reiniciar el nivel actual (botón del overlay de game-over)
+function resetGame() {
+    state.lives = 3;
+    state.volts = [0, 0, 0];
+    state.inventory = [...DATA];
+    state.selectedIdx = null;
+    document.getElementById('overlay').style.display = 'none';
+    l2={ships:[],shots:[],torpedosLeft:7,hitsNeeded:3,hits:0,active:true}; initLevel2();
+}
+
+// ── LEVEL PIPS ───────────────────────────────────────────────────────────────
+function updateLevelPips() {
+    for (let i = 1; i <= 5; i++) {
+        const pip = document.getElementById(`pip-${i}`);
+        if (!pip) continue;
+        pip.classList.remove('active', 'done');
+        if (i < currentLevel) pip.classList.add('done');
+        else if (i === currentLevel) pip.classList.add('active');
+    }
+}
+
+
+let l2 = { ships:[], shots:[], torpedosLeft:7, hitsNeeded:3, hits:0, active:true };
+// ============================================================
+//  LEVEL 2 — TORPEDOS / RADAR UNIFICADO
+// ============================================================
+// Una sola cuadrícula 10x10 actúa de radar Y de mapa de disparo.
+// Los blips rojos se superponen encima de la celda exacta.
+// El jugador hace clic en la señal roja → coordenadas cargadas → FUEGO.
+
+const GRID_SIZE = 10;
+const CELL_PX = 28; // tamaño de celda en px
+
+function buildRadarGrid() {
+    const grid = document.getElementById('radar-grid');
+    grid.innerHTML = '';
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = `20px repeat(${GRID_SIZE}, ${CELL_PX}px)`;
+    grid.style.gap = '1px';
+    grid.style.background = '#020c02';
+    grid.style.padding = '2px';
+
+    // Fila de etiquetas X
+    const corner = document.createElement('div');
+    corner.style.cssText = 'width:20px;height:16px;';
+    grid.appendChild(corner);
+    for (let x = 0; x < GRID_SIZE; x++) {
+        const lbl = document.createElement('div');
+        lbl.style.cssText = `width:${CELL_PX}px;height:16px;display:flex;align-items:center;justify-content:center;font-family:'Special Elite',monospace;font-size:8px;color:#1a5a1a;`;
+        lbl.textContent = x;
+        grid.appendChild(lbl);
+    }
+
+    // Filas Y=9 (arriba) hasta Y=0 (abajo)
+    for (let y = GRID_SIZE - 1; y >= 0; y--) {
+        const lblY = document.createElement('div');
+        lblY.style.cssText = `width:20px;height:${CELL_PX}px;display:flex;align-items:center;justify-content:center;font-family:'Special Elite',monospace;font-size:8px;color:#1a5a1a;`;
+        lblY.textContent = y;
+        grid.appendChild(lblY);
+
+        for (let x = 0; x < GRID_SIZE; x++) {
+            const cell = document.createElement('div');
+            cell.id = `rgc-${x}-${y}`;
+            cell.style.cssText = `
+                width:${CELL_PX}px; height:${CELL_PX}px;
+                background:rgba(2,12,2,0.85);
+                border:1px solid rgba(34,197,94,0.12);
+                position:relative;
+                display:flex; align-items:center; justify-content:center;
+                cursor:pointer; transition:all 0.15s;
+                font-family:'Special Elite',monospace; font-size:8px;
+            `;
+            cell.title = `(${x},${y})`;
+            cell.addEventListener('mouseenter', () => {
+                if (!cell.dataset.state) cell.style.borderColor = 'rgba(34,197,94,0.5)';
+            });
+            cell.addEventListener('mouseleave', () => {
+                if (!cell.dataset.state) cell.style.borderColor = 'rgba(34,197,94,0.12)';
+            });
+            cell.onclick = () => onRadarCellClick(x, y, cell);
+            grid.appendChild(cell);
+        }
+    }
+}
+
+function onRadarCellClick(x, y, cell) {
+    if (!l2.active) return;
+    // Resaltar celda apuntada
+    document.querySelectorAll('[id^="rgc-"]').forEach(c => {
+        if (!c.dataset.state) c.style.outline = '';
+    });
+    if (!cell.dataset.state) {
+        cell.style.outline = '2px solid #d97706';
+    }
+    // Cargar coordenadas
+    document.getElementById('coord-x').value = x;
+    document.getElementById('coord-y').value = y;
+}
+
+function renderRadar() {
+    // Pinta los blips de barcos sobre las celdas exactas
+    // Primero elimina blips anteriores
+    document.querySelectorAll('.ship-blip').forEach(b => b.remove());
+
+    l2.ships.forEach((ship, idx) => {
+        const cell = document.getElementById(`rgc-${ship.x}-${ship.y}`);
+        if (!cell) return;
+
+        if (ship.hit) {
+            // Celda hundida — verde con X
+            cell.dataset.state = 'hit';
+            cell.style.background = 'rgba(34,197,94,0.20)';
+            cell.style.borderColor = '#22c55e';
+            cell.style.color = '#22c55e';
+            cell.style.boxShadow = '0 0 8px rgba(34,197,94,0.5)';
+            cell.style.outline = '';
+            cell.textContent = '✕';
+        } else {
+            // Blip rojo animado superpuesto en la celda
+            const blip = document.createElement('div');
+            blip.className = 'ship-blip';
+            blip.id = `blip-${idx}`;
+            blip.title = `Contacto — haz clic para apuntar`;
+            blip.style.cssText = `
+                position:absolute; inset:0; margin:auto;
+                width:10px; height:10px; border-radius:50%;
+                background:#ef4444; box-shadow:0 0 8px #ef4444;
+                animation:blip-pulse 1s infinite;
+                z-index:20; pointer-events:none;
+                transform:none;
+            `;
+            cell.appendChild(blip);
+            // La celda es clicable → se carga la coord automáticamente
+        }
+    });
+}
+
+function updateL2Blips() {
+    l2.ships.forEach((ship, idx) => {
+        if (ship.hit) {
+            const cell = document.getElementById(`rgc-${ship.x}-${ship.y}`);
+            if (cell) {
+                // Quitar blip animado
+                const blip = document.getElementById(`blip-${idx}`);
+                if (blip) blip.remove();
+                // Marcar celda como hundida
+                cell.dataset.state = 'hit';
+                cell.style.background = 'rgba(34,197,94,0.20)';
+                cell.style.borderColor = '#22c55e';
+                cell.style.color = '#22c55e';
+                cell.style.boxShadow = '0 0 8px rgba(34,197,94,0.5)';
+                cell.style.outline = '';
+                cell.textContent = '✕';
+            }
+        }
+    });
+}
+
+function markShotCell(x, y, isHit) {
+    const cell = document.getElementById(`rgc-${x}-${y}`);
+    if (!cell || cell.dataset.state === 'hit') return;
+    cell.dataset.state = isHit ? 'hit' : 'miss';
+    if (isHit) {
+        cell.style.background = 'rgba(34,197,94,0.20)';
+        cell.style.borderColor = '#22c55e';
+        cell.style.color = '#22c55e';
+        cell.style.boxShadow = '0 0 8px rgba(34,197,94,0.5)';
+        cell.style.outline = '';
+        cell.textContent = '✕';
+    } else {
+        cell.style.background = 'rgba(239,68,68,0.10)';
+        cell.style.borderColor = 'rgba(239,68,68,0.4)';
+        cell.style.color = '#ef4444';
+        cell.style.outline = '';
+        cell.textContent = '·';
+    }
+}
+
+function initLevel2() {
+    l2 = {
+        ships: [],
+        shots: [],
+        torpedosLeft: 7,
+        hitsNeeded: 3,
+        hits: 0,
+        active: true
+    };
+
+    const placed = [];
+    let attempts = 0;
+    while (l2.ships.length < 3 && attempts < 200) {
+        attempts++;
+        const x = Math.floor(Math.random() * GRID_SIZE);
+        const y = Math.floor(Math.random() * GRID_SIZE);
+        const tooClose = placed.some(p => Math.abs(p.x - x) + Math.abs(p.y - y) < 3);
+        if (!tooClose) {
+            placed.push({ x, y });
+            l2.ships.push({ x, y, hit: false });
+        }
+    }
+
+    // Reconstruir torpedo slots
+    const torpWrap = document.getElementById('torp-slots');
+    if (torpWrap) {
+        torpWrap.innerHTML = '';
+        for (let i = 0; i < 7; i++) {
+            const slot = document.createElement('div');
+            slot.id = `torp-${i}`;
+            slot.className = 'torp-slot torp-ready font-retro';
+            slot.textContent = 'T';
+            torpWrap.appendChild(slot);
+        }
+    }
+
+    // Construir la cuadrícula unificada
+    buildRadarGrid();
+    // Pintar los blips sobre las celdas exactas
+    renderRadar();
+    // Sincronizar sweep overlay con el tamaño de la cuadrícula
+    syncSweepOverlay();
+    updateL2UI();
+
+    print('SONAR ACTIVADO — 3 contactos detectados en la cuadrícula.', 'info');
+    print('Haz clic sobre una señal ⬤ roja en el radar para apuntar.', 'sys');
+    print('Tienes 7 torpedos — necesitas 3 impactos directos.', 'warn');
+
+    document.getElementById('target-count').textContent = l2.hitsNeeded;
+    document.getElementById('ship-info').innerHTML = `<span style="color:#4a6a4a;">⚠ ${l2.ships.length} CONTACTOS EN EL ÁREA</span><br><span style="color:#1a4a1a; font-size:10px;">Haz clic sobre las señales rojas del radar</span>`;
+}
+
+function syncSweepOverlay() {
+    // Ajustar el overlay del sweep para que coincida con el tamaño real del grid
+    const gridWrap = document.getElementById('radar-grid-wrap');
+    const overlay  = document.getElementById('radar-sweep-overlay');
+    if (!gridWrap || !overlay) return;
+    const rect = gridWrap.getBoundingClientRect();
+    overlay.style.width  = gridWrap.offsetWidth  + 'px';
+    overlay.style.height = gridWrap.offsetHeight + 'px';
+    // Posicionar el overlay encima del gridWrap con position absolute del padre
+    overlay.style.top  = '0';
+    overlay.style.left = '0';
+}
+
+function updateL2UI() {
+    // Torpedo slots — update all 7
+    for (let i = 0; i < 7; i++) {
+        const slot = document.getElementById(`torp-${i}`);
+        if (!slot) continue;
+        if (i < l2.torpedosLeft) {
+            slot.className = 'torp-slot torp-ready font-retro';
+            slot.textContent = 'T';
+        } else {
+            slot.className = 'torp-slot torp-fired font-retro';
+            slot.textContent = '×';
+        }
+    }
+    document.getElementById('hits-count').textContent = l2.hits;
+    document.getElementById('shots-count').textContent = 7 - l2.torpedosLeft;
+    document.getElementById('fire-btn').disabled = l2.torpedosLeft <= 0 || !l2.active;
+}
+
+function fireTorpedo() {
+    if (!l2.active || l2.torpedosLeft <= 0) return;
+
+    const xRaw = document.getElementById('coord-x').value;
+    const yRaw = document.getElementById('coord-y').value;
+    const x = parseInt(xRaw);
+    const y = parseInt(yRaw);
+
+    if (isNaN(x) || isNaN(y) || x < 0 || x > 9 || y < 0 || y > 9) {
+        toast('⚠ Coordenadas inválidas (0-9)');
+        print('ERROR: Coordenadas fuera de rango.', 'warn');
+        return;
+    }
+
+    // Check duplicate shot
+    const alreadyShot = l2.shots.find(s => s.x === x && s.y === y);
+    if (alreadyShot) {
+        toast('⚠ Ya disparaste en esa posición');
+        print('AVISO: Coordenadas ya utilizadas.', 'warn');
+        return;
+    }
+
+    l2.torpedosLeft--;
+    const hit = l2.ships.find(s => s.x === x && s.y === y && !s.hit);
+    const isHit = !!hit;
+
+    l2.shots.push({ x, y, hit: isHit });
+    if (hit) {
+        hit.hit = true;
+        l2.hits++;
+    }
+
+    // Update radar grid
+    markShotCell(x, y, isHit);
+    updateL2Blips();
+    updateL2UI();
+
+    const resultEl = document.getElementById('shot-result');
+    if (isHit) {
+        resultEl.style.color = '#22c55e';
+        resultEl.textContent = `✓ IMPACTO en (${x},${y}) — Objetivo neutralizado.`;
+        print(`IMPACTO CONFIRMADO en (${x},${y}). Barco hundido.`, 'info');
+        toast('🎯 ¡IMPACTO!');
+    } else {
+        resultEl.style.color = '#ef4444';
+        resultEl.textContent = `✗ FALLO en (${x},${y}) — Sin contacto.`;
+        print(`Torpedo (${x},${y}) — FALLO. Sin contacto.`, 'err');
+        toast('Miss — sin contacto');
+    }
+
+    // Show proximity hint for nearest undetected ship
+    if (!isHit) {
+        const unHit = l2.ships.filter(s => !s.hit);
+        if (unHit.length > 0) {
+            const distances = unHit.map(s => Math.abs(s.x - x) + Math.abs(s.y - y));
+            const minDist = Math.min(...distances);
+            let hint = '';
+            if (minDist <= 1) hint = '¡MUY CERCA! Contacto a 1 cuadro.';
+            else if (minDist <= 3) hint = `Cerca — contacto a ~${minDist} cuadros.`;
+            else hint = `Lejos — contacto a ${minDist} cuadros.`;
+            setTimeout(() => {
+                print(`Análisis sonar: ${hint}`, 'warn');
+                toast('📡 ' + hint);
+            }, 600);
+        }
+    }
+
+    checkL2Game();
+}
+
+function checkL2Game() {
+    if (l2.hits >= l2.hitsNeeded) {
+        l2.active = false;
+        print('✓ TODOS LOS OBJETIVOS NEUTRALIZADOS. Ruta libre.', 'info');
+        setTimeout(() => levelCompleted('¡OBJETIVOS NEUTRALIZADOS!', 'Flota enemiga hundida. Nivel superado.'), 800);
+        return;
+    }
+    if (l2.torpedosLeft <= 0) {
+        l2.active = false;
+        state.lives--;
+        updateFuses();
+        if (state.lives <= 0) {
+            showOverlay('MUNICIÓN AGOTADA', 'Sin torpedos y sin éxito. El Peral se rinde.', '#ef4444');
+        } else {
+            print('Sin torpedos — Reiniciando sistema de puntería...', 'err');
+            toast('⛔ Sin munición — reiniciando');
+            setTimeout(initLevel2, 1500);
+        }
+    }
+}
+
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+(function() {
+    document.getElementById('level-badge').textContent = 'NIVEL 02 — SALA DE TORPEDOS';
+    document.getElementById('header-info').textContent = 'Sistema de puntería — coordenadas (0-9)';
+    document.getElementById('mission-text').textContent = 'El radar detecta barcos enemigos. Localiza las señales rojas e introduce sus coordenadas exactas para lanzar el torpedo.';
+    updateLevelPips();
+    updateFuses();
+    initLevel2();
+})();
+</script>
+</body>
+</html>
